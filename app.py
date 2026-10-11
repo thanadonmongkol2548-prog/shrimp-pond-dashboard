@@ -6,20 +6,26 @@ import pandas as pd
 import plotly.express as px
 import json
 from datetime import datetime, timedelta
+
 # 1. ยืนยันตัวตน GEE บน Streamlit Cloud
 @st.cache_resource
 def init_gee():
     try:
         service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
+        
+        # ดึง project_id จาก Secrets
+        project_id = service_account_info.get("project_id", "shrimp-water-quality")
+        
+        # แปลง dict ให้เป็น JSON String
         key_json_str = json.dumps(service_account_info)
+        
         credentials = ee.ServiceAccountCredentials(
             service_account_info["client_email"],
             key_data=key_json_str
         )
         
-        # เพิ่ม project_id เข้าไปใน Initialize
-        project_id = service_account_info.get("project_id", "shrimp-water-quality")
-        ee.Initialize(credentials, project=project_id)
+        # ระบุ project สองจุดเพื่อให้ครอบคลุมการประมวลผล Cloud
+        ee.Initialize(credentials, project=project_id, opt_url='https://earthengine.googleapis.com')
         
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ GEE: {e}")
