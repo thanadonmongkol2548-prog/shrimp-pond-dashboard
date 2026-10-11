@@ -3,6 +3,7 @@ import ee
 import folium
 from streamlit_folium import st_folium
 import pandas as pd
+import json  # เพิ่มการ import json
 
 # 1. ยืนยันตัวตน GEE บน Streamlit Cloud
 @st.cache_resource
@@ -11,10 +12,13 @@ def init_gee():
         # อ่านข้อมูล Service Account จาก Streamlit Secrets
         service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
         
-        # ใช้ ServiceAccountCredentials กับ dict โดยตรง
+        # แปลง dict ให้เป็น JSON String (Fix ข้อผิดพลาด: expected str, bytes or bytearray)
+        key_json_str = json.dumps(service_account_info)
+        
+        # ส่ง key_data เป็น string ให้ GEE
         credentials = ee.ServiceAccountCredentials(
             service_account_info["client_email"],
-            key_data=service_account_info
+            key_data=key_json_str
         )
         ee.Initialize(credentials)
     except Exception as e:
