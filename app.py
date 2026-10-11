@@ -2,24 +2,34 @@ import streamlit as st
 import ee
 import folium
 from streamlit_folium import st_folium
-import plotly.express as px
 import pandas as pd
 
-# เชื่อมต่อ Google Earth Engine
+# 1. ยืนยันตัวตน GEE บน Streamlit Cloud ด้วย Secrets
 @st.cache_resource
 def init_gee():
-    ee.Initialize()
+    try:
+        # ดึงคีย์จาก Secrets
+        service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
+        credentials = ee.ServiceAccountCredentials(
+            service_account_info["client_email"],
+            key_data=service_account_info
+        )
+        ee.Initialize(credentials, project=service_account_info["project_id"])
+    except Exception as e:
+        # รองรับกรณีรันในเครื่อง Local (ถ้าไม่มี secrets)
+        try:
+            ee.Initialize()
+        except:
+            st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ GEE: {e}")
 
-try:
-    init_gee()
-except:
-    st.error("กรุณา Authenticate GEE ในเครื่องก่อนด้วยคำสั่ง earthengine authenticate")
+init_gee()
 
 st.set_page_config(page_title="ระบบวิเคราะห์คุณภาพน้ำบ่อกุ้งดาวเทียม", layout="wide")
+
 st.title("🦐 ระบบตรวจเช็คคุณภาพน้ำบ่อกุ้งด้วยดาวเทียม (Self-Service)")
 st.write("📌 **วิธีใช้งาน:** เลื่อนแผนที่ไปที่ฟาร์มของคุณ ใช้เครื่องมือวาดสี่เหลี่ยม/โพลีกอน (รูปทรง) ครอบบ่อกุ้งของคุณ แล้วกด **'เริ่มวิเคราะห์คุณภาพน้ำ'**")
 
-# สร้างแผนที่ Interactive
+# 2. สร้างแผนที่ Interactive
 m = folium.Map(location=[13.60, 100.90], zoom_start=13)
 folium.TileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Satellite').add_to(m)
 
@@ -28,6 +38,7 @@ Draw(export=True, filename='my_pond.geojson').add_to(m)
 
 map_data = st_folium(m, width=1200, height=500)
 
+# 3. ปุ่มกดคำนวณ
 if st.button("🚀 เริ่มวิเคราะห์คุณภาพน้ำบ่อนี้"):
     if map_data and map_data.get("all_drawings"):
         user_geometry = map_data["all_drawings"][0]["geometry"]
@@ -59,9 +70,9 @@ if st.button("🚀 เริ่มวิเคราะห์คุณภาพ�
         st.success("✅ ประมวลผลสำเร็จ!")
         
         col1, col2, col3 = st.columns(3)
-        ndci_val = round(stats.get('NDCI', 0), 3)
-        ndti_val = round(stats.get('NDTI', 0), 3)
-        cdom_val = round(stats.get('CDOM', 0), 3)
+        ndci_val = round(stats.get('NDCI', 0), 3) if stats.get('NDCI') else 0
+        ndti_val = round(stats.get('NDTI', 0), 3) if stats.get('NDTI') else 0
+        cdom_val = round(stats.get('CDOM', 0), 3) if stats.get('CDOM') else 0
         
         col1.metric("NDCI (คลอโรฟิลล์-เอ)", ndci_val)
         col2.metric("NDTI (ความขุ่น)", ndti_val)
