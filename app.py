@@ -1,0 +1,78 @@
+import streamlit as st
+import ee
+import folium
+from streamlit_folium import st_folium
+import plotly.express as px
+import pandas as pd
+
+# เชื่อมต่อ Google Earth Engine
+@st.cache_resource
+def init_gee():
+    ee.Initialize()
+
+try:
+    init_gee()
+except:
+    st.error("กรุณา Authenticate GEE ในเครื่องก่อนด้วยคำสั่ง earthengine authenticate")
+
+st.set_page_config(page_title="ระบบวิเคราะห์คุณภาพน้ำบ่อกุ้งดาวเทียม", layout="wide")
+st.title("🦐 ระบบตรวจเช็คคุณภาพน้ำบ่อกุ้งด้วยดาวเทียม (Self-Service)")
+st.write("📌 **วิธีใช้งาน:** เลื่อนแผนที่ไปที่ฟาร์มของคุณ ใช้เครื่องมือวาดสี่เหลี่ยม/โพลีกอน (รูปทรง) ครอบบ่อกุ้งของคุณ แล้วกด **'เริ่มวิเคราะห์คุณภาพน้ำ'**")
+
+# สร้างแผนที่ Interactive
+m = folium.Map(location=[13.60, 100.90], zoom_start=13)
+folium.TileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Satellite').add_to(m)
+
+from folium.plugins import Draw
+Draw(export=True, filename='my_pond.geojson').add_to(m)
+
+map_data = st_folium(m, width=1200, height=500)
+
+if st.button("🚀 เริ่มวิเคราะห์คุณภาพน้ำบ่อนี้"):
+    if map_data and map_data.get("all_drawings"):
+        user_geometry = map_data["all_drawings"][0]["geometry"]
+        coordinates = user_geometry["coordinates"]
+        
+        ee_pond = ee.Geometry.Polygon(coordinates)
+        st.info("🔄 กำลังดึงภาพดาวเทียม Sentinel-2 และประมวลผลค่าน้ำเบื้องหลัง...")
+        
+        s2 = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+              .filterBounds(ee_pond)
+              .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+              .sort('system:time_start', False))
+        
+        latest_img = s2.first()
+        
+        ndwi = latest_img.normalizedDifference(['B3', 'B8']).rename('NDWI')
+        ndci = latest_img.normalizedDifference(['B5', 'B4']).rename('NDCI')
+        ndti = latest_img.normalizedDifference(['B4', 'B3']).rename('NDTI')
+        cdom = latest_img.select('B3').divide(latest_img.select('B1')).rename('CDOM')
+        
+        multi_band = latest_img.addBands([ndwi, ndci, ndti, cdom])
+        
+        stats = multi_band.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=ee_pond,
+            scale=10
+        ).getInfo()
+        
+        st.success("✅ ประมวลผลสำเร็จ!")
+        
+        col1, col2, col3 = st.columns(3)
+        ndci_val = round(stats.get('NDCI', 0), 3)
+        ndti_val = round(stats.get('NDTI', 0), 3)
+        cdom_val = round(stats.get('CDOM', 0), 3)
+        
+        col1.metric("NDCI (คลอโรฟิลล์-เอ)", ndci_val)
+        col2.metric("NDTI (ความขุ่น)", ndti_val)
+        col3.metric("CDOM (สารอินทรีย์)", cdom_val)
+        
+        st.subheader("💡 การประเมินสถานะและคำแนะนำสำหรับบ่อนี้")
+        if ndci_val < 0.15 and ndti_val > 0:
+            st.error("🚨 **สถานะ: วิกฤต (เสี่ยงแพลงก์ตอนดรอป/น้ำล้ม)**\n\n**ข้อแนะนำ:** เปิดเครื่องตีน้ำตลอด 24 ชม. และสาดปูนขาวปรับสภาพน้ำด่วน!")
+        elif cdom_val > 1.35:
+            st.warning("⚠️ **สถานะ: เฝ้าระวัง (สารอินทรีย์สะสมสูง)**\n\n**ข้อแนะนำ:** เร่งดูดเลนกลางบ่อ และเติมจุลินทรีย์ย่อยสลาย")
+        else:
+            st.success("✅ **สถานะ: ปกติ (สมดุลน้ำดี)**\n\n**ข้อแนะนำ:** ควบคุมการให้อาหารตามตารางปกติ")
+    else:
+        st.warning("⚠️ กรุณาใช้นิ้ว/เมาส์วาดรูปทรงครอบบ่อกุ้งของคุณบนแผนที่ก่อนครับ")

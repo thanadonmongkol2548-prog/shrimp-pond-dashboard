@@ -1,0 +1,6 @@
+streamlit
+earthengine-api
+streamlit-folium
+folium
+plotly
+pandas
