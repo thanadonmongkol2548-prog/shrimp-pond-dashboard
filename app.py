@@ -4,23 +4,21 @@ import folium
 from streamlit_folium import st_folium
 import pandas as pd
 
-# 1. ยืนยันตัวตน GEE บน Streamlit Cloud ด้วย Secrets
+# 1. ยืนยันตัวตน GEE บน Streamlit Cloud
 @st.cache_resource
 def init_gee():
     try:
-        # ดึงคีย์จาก Secrets
+        # อ่านข้อมูล Service Account จาก Streamlit Secrets
         service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
+        
+        # ใช้ ServiceAccountCredentials กับ dict โดยตรง
         credentials = ee.ServiceAccountCredentials(
             service_account_info["client_email"],
             key_data=service_account_info
         )
-        ee.Initialize(credentials, project=service_account_info["project_id"])
+        ee.Initialize(credentials)
     except Exception as e:
-        # รองรับกรณีรันในเครื่อง Local (ถ้าไม่มี secrets)
-        try:
-            ee.Initialize()
-        except:
-            st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ GEE: {e}")
+        st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ GEE: {e}")
 
 init_gee()
 
