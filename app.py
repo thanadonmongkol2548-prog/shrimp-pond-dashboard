@@ -6,7 +6,25 @@ import pandas as pd
 import plotly.express as px
 import json
 from datetime import datetime, timedelta
+# 1. ยืนยันตัวตน GEE บน Streamlit Cloud
+@st.cache_resource
+def init_gee():
+    try:
+        service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
+        key_json_str = json.dumps(service_account_info)
+        credentials = ee.ServiceAccountCredentials(
+            service_account_info["client_email"],
+            key_data=key_json_str
+        )
+        
+        # เพิ่ม project_id เข้าไปใน Initialize
+        project_id = service_account_info.get("project_id", "shrimp-water-quality")
+        ee.Initialize(credentials, project=project_id)
+        
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ GEE: {e}")
 
+init_gee()
 # --- 1. ตั้งค่าหน้าเว็บ & Custom CSS สไตล์โมเดิร์น ---
 st.set_page_config(
     page_title="ShrimpSmart - ระบบวิเคราะห์และวางแผนจัดการบ่อกุ้งหลายบ่อ",
