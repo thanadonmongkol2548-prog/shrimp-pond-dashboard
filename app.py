@@ -7,7 +7,7 @@ import plotly.express as px
 import json
 from datetime import datetime, timedelta
 
-# --- 1. ตั้งค่าหน้าเว็บ & Custom CSS สไตล์ Copernicus Dark Navy Theme ---
+# --- 1. ตั้งค่าหน้าเว็บ & Custom CSS สไตล์ Copernicus Browser ---
 st.set_page_config(
     page_title="ShrimpSmart Browser - ระบบวิเคราะห์คุณภาพน้ำบ่อกุ้ง",
     page_icon="🦐",
@@ -15,70 +15,71 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS ตกแต่งให้คล้าย Copernicus Browser (Sidebar น้ำเงินเข้ม #182b49)
+# Custom CSS จัดหน้าเว็บสไตล์ Copernicus (Sidebar น้ำเงินเข้ม #182b49)
 st.markdown("""
     <style>
-    /* ซ่อน Header และ Footer เปล่าของ Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* พื้นหลังส่วนหลัก */
     .stApp {
-        background-color: #f4f6f9;
+        background-color: #0f172a;
+        color: #f8fafc;
     }
     
-    /* ตกแต่ง Sidebar สไตล์ Copernicus (Dark Navy Blue) */
+    /* Sidebar สไตล์ Copernicus */
     [data-testid="stSidebar"] {
         background-color: #182b49 !important;
+        border-right: 1px solid #1e293b;
     }
     
     [data-testid="stSidebar"] * {
-        color: #ffffff !important;
+        color: #f1f5f9 !important;
     }
     
-    /* ปรับแต่งปุ่มกดหลัก */
+    /* ปุ่มวิเคราะห์สีเขียว Copernicus */
     .stButton>button {
-        background-color: #7da100 !important; /* สีเขียวสไตล์ Copernicus button */
+        background-color: #7da100 !important;
         color: #ffffff !important;
         font-weight: bold !important;
         font-size: 16px !important;
-        border-radius: 4px !important;
+        border-radius: 6px !important;
         border: none !important;
         padding: 12px 20px !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2) !important;
+        box-shadow: 0 4px 10px rgba(125, 161, 0, 0.3) !important;
         transition: all 0.2s !important;
     }
     
     .stButton>button:hover {
         background-color: #8cb500 !important;
-        transform: translateY(-1px);
+        transform: translateY(-2px);
     }
     
-    /* ตกแต่งกล่อง Metric สรุปผล */
-    [data-testid="stMetricValue"] {
-        font-size: 24px !important;
-        font-weight: bold !important;
-        color: #182b49 !important;
-    }
-    
-    /* ปรับปรุงหัวข้อ */
+    /* Header Bar */
     .copernicus-header {
-        background-color: #182b49;
+        background: linear-gradient(135deg, #182b49 0%, #0f172a 100%);
         color: white;
-        padding: 15px 25px;
-        border-radius: 6px;
+        padding: 18px 25px;
+        border-radius: 8px;
         margin-bottom: 20px;
-        box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        border: 1px solid #1e293b;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
     .copernicus-header h2 {
         margin: 0;
         color: #ffffff;
-        font-weight: 600;
+        font-weight: 700;
+        font-size: 24px;
     }
     .copernicus-header p {
-        margin: 5px 0 0 0;
-        color: #b0c4de;
+        margin: 6px 0 0 0;
+        color: #94a3b8;
         font-size: 14px;
+    }
+    
+    /* Dataframe สไตล์ Dark Mode */
+    [data-testid="stDataFrame"] {
+        background-color: #1e293b;
+        border-radius: 8px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -105,12 +106,12 @@ init_gee()
 st.markdown("""
     <div class="copernicus-header">
         <h2>🦐 ShrimpSmart Browser | ระบบวิเคราะห์คุณภาพน้ำบ่อกุ้งจากดาวเทียม</h2>
-        <p>เครื่องมือตรวจเช็คดัชนี NDCI, NDTI, CDOM, NDWI รายบ่อ พร้อมตารางแผนการจัดการฟาร์มประจำวัน</p>
+        <p>ค้นหาพิกัดฟาร์มกุ้ง วาดโพลีกอนระบุบ่อ แล้ววิเคราะห์ดัชนี NDCI, NDTI, CDOM, NDWI ได้ทันที</p>
     </div>
 """, unsafe_allow_html=True)
 
 # --- Sidebar Controls (Copernicus Style) ---
-st.sidebar.markdown("### ⚙️ ค้นหาพิกัด & ตัวเลือกบ่อ")
+st.sidebar.markdown("### 🏢 พิกัดบ่อกุ้งประจำฟาร์ม")
 
 PRESET_PONDS = {
     "กำหนดเอง (พิมพ์พิกัด)": [13.5821, 100.9543],
@@ -121,15 +122,15 @@ PRESET_PONDS = {
     "บ่อที่ 5 (อ.บ้านโพธิ์)": [13.6150, 101.0250],
 }
 
-selected_preset = st.sidebar.selectbox("🏢 พิกัดเริ่มต้นประจำบ่อ", list(PRESET_PONDS.keys()))
+selected_preset = st.sidebar.selectbox("เลือกตำแหน่งเริ่มต้น", list(PRESET_PONDS.keys()))
 default_lat, default_lon = PRESET_PONDS[selected_preset]
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📍 ค้นหาตำแหน่งระบุพิกัด")
+st.sidebar.markdown("### 📍 ระบุพิกัดค้นหา (Lat/Lon)")
 col_lat, col_lon = st.sidebar.columns(2)
-lat_input = col_lat.number_input("ละติจูด (Lat)", value=default_lat, format="%.6f")
-lon_input = col_lon.number_input("ลองจิจูด (Lon)", value=default_lon, format="%.6f")
-zoom_input = st.sidebar.slider("ระดับ Zoom แผนที่", 12, 18, 16)
+lat_input = col_lat.number_input("ละติจูด", value=default_lat, format="%.6f")
+lon_input = col_lon.number_input("ลองจิจูด", value=default_lon, format="%.6f")
+zoom_input = st.sidebar.slider("ระดับ Zoom (ขยายภาพ)", 12, 18, 16)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📅 ช่วงเวลาข้อมูลดาวเทียม")
@@ -137,22 +138,46 @@ end_date = st.sidebar.date_input("วันที่สิ้นสุด", date
 start_date = st.sidebar.date_input("วันที่เริ่มต้น (ดูแนวโน้ม)", end_date - timedelta(days=60))
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🛰️ ชุดข้อมูลดาวเทียม")
-st.sidebar.info("• Satellite: Sentinel-2 L2A\n• Resolution: 10m\n• Refresh Rate: 3-5 วัน")
+st.sidebar.markdown("### 🛰️ ชุดข้อมูลภาพดาวเทียม")
+st.sidebar.info("• Satellite: Sentinel-2 L2A\n• Ground Resolution: 10m\n• Base Map: Google High-Res Satellite")
 
 # --- Main Layout ---
 col_map, col_info = st.columns([7, 5])
 
 with col_map:
-    st.subheader("🗺️ แผนที่สำรวจผิวน้ำ (วาดโพลีกอนหลายบ่อได้ที่นี่)")
-    m = folium.Map(location=[lat_input, lon_input], zoom_start=zoom_input)
-    folium.TileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google Satellite', name='Google Satellite').add_to(m)
-    folium.TileLayer('openstreetmap', name='OpenStreetMap').add_to(m)
-    folium.LayerControl().add_to(m)
+    st.subheader("🗺️ แผนที่ดาวเทียมภาพจริง (ใช้วาดบ่อกุ้ง)")
     
-    # หมุดชี้ตำแหน่งพิกัดค้นหา
-    folium.Marker([lat_input, lon_input], popup="ตำแหน่งพิกัดค้นหา", icon=folium.Icon(color="red", icon="info-sign")).add_to(m)
+    # สั่งสร้าง Map โดยตั้ง tiles=None แล้วใส่ Google Satellite เป็นชั้นหลักทันที
+    m = folium.Map(location=[lat_input, lon_input], zoom_start=zoom_input, tiles=None)
+    
+    # 🛰️ บังคับใช้ภาพถ่ายดาวเทียมความละเอียดสูง (Google Satellite) เป็นพื้นหลังหลัก
+    folium.TileLayer(
+        tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+        attr='Google Satellite',
+        name='ภาพถ่ายดาวเทียม (Satellite)',
+        overlay=False,
+        control=True
+    ).add_to(m)
+    
+    # เพิ่มตัวเลือกชั้นภาพดาวเทียมพร้อมชื่อสถานที่/ถนน (Hybrid)
+    folium.TileLayer(
+        tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+        attr='Google Satellite Hybrid',
+        name='ดาวเทียม + ชื่อสถานที่ (Hybrid)',
+        overlay=False,
+        control=True
+    ).add_to(m)
+    
+    folium.LayerControl().add_to(m)
 
+    # หมุดแสดงตำแหน่งพิกัดที่ค้นหา
+    folium.Marker(
+        [lat_input, lon_input],
+        popup="ตำแหน่งพิกัดค้นหา",
+        icon=folium.Icon(color="red", icon="info-sign")
+    ).add_to(m)
+
+    # เครื่องมือวาดรูปทรงบ่อกุ้ง
     from folium.plugins import Draw
     Draw(
         export=True,
@@ -161,14 +186,14 @@ with col_map:
         draw_options={'polyline': False, 'circle': False, 'marker': False, 'circlemarker': False}
     ).add_to(m)
     
-    map_data = st_folium(m, width=720, height=480, key="shrimp_map")
+    map_data = st_folium(m, width=720, height=500, key="shrimp_map")
 
 with col_info:
-    st.subheader("📌 คำแนะนำการใช้งานระบบ")
+    st.subheader("📌 คำแนะนำการใช้งาน")
     st.info("""
-    1. **ค้นหาตำแหน่ง:** ใส่พิกัด ละติจูด/ลองจิจูด ในเมนูด้านซ้าย เพื่อซูมไปยังฟาร์ม
-    2. **วาดรูปทรงบ่อ:** ใช้เครื่องมือวาดสี่เหลี่ยม/โพลีกอน **วาดล้อมรอบบ่อกุ้งกี่บ่อก็ได้พร้อมกัน** (บ่อ 1, บ่อ 2, บ่อ 3 ฯลฯ)
-    3. **ประมวลผล:** กดปุ่ม **'วิเคราะห์คุณภาพน้ำทุกบ่อ'** ด้านล่าง
+    1. **ส่องดูบ่อกุ้ง:** แผนที่ด้านซ้ายเปลี่ยนเป็น **"ภาพถ่ายดาวเทียมความละเอียดสูง"** แล้ว จะเห็นคันบ่อและผิวน้ำชัดเจน
+    2. **วาดรูปทรงบ่อ:** ใช้เครื่องมือวาดรูปสี่เหลี่ยม หรือโพลีกอน (มุมซ้ายบนของแผนที่) **คลิกวาดล้อมรอบบ่อกุ้งได้หลายๆ บ่อ**
+    3. **ประมวลผล:** กดปุ่ม **'🚀 วิเคราะห์คุณภาพน้ำทุกบ่อ'** ด้านล่าง
     """)
     
     btn_analyze = st.button("🚀 วิเคราะห์คุณภาพน้ำทุกบ่อพร้อมกัน", use_container_width=True)
@@ -331,7 +356,7 @@ if btn_analyze:
 
                 metric_choice = st.selectbox("เลือกดัชนีที่ต้องการดูแนวโน้มเปรียบเทียบ", ["NDCI", "NDTI", "CDOM"])
                 fig = px.line(df_ts, x='Date', y=metric_choice, color='ชื่อบ่อ', markers=True, title=f"แนวโน้มค่า {metric_choice} ย้อนหลังเปรียบเทียบรายบ่อ")
-                fig.update_layout(hovermode="x unified", template="plotly_white")
+                fig.update_layout(hovermode="x unified", template="plotly_dark")
                 st.plotly_chart(fig, use_container_width=True)
 
                 # ปุ่มดาวน์โหลด
@@ -339,6 +364,6 @@ if btn_analyze:
                 st.download_button(
                     label="📥 ดาวน์โหลดตารางแผนการจัดการบ่อกุ้งทุกบ่อ (CSV)",
                     data=csv,
-                    file_name='shrimp_farm_action_plan.csv',
+                    file_name='multi_pond_action_plan.csv',
                     mime='text/csv'
                 )
