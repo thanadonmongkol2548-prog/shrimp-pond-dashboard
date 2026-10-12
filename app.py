@@ -7,55 +7,78 @@ import plotly.express as px
 import json
 from datetime import datetime, timedelta
 
-# 1. ยืนยันตัวตน GEE บน Streamlit Cloud
-@st.cache_resource
-def init_gee():
-    try:
-        service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
-        
-        # ดึง project_id จาก Secrets
-        project_id = service_account_info.get("project_id", "shrimp-water-quality")
-        
-        # แปลง dict ให้เป็น JSON String
-        key_json_str = json.dumps(service_account_info)
-        
-        credentials = ee.ServiceAccountCredentials(
-            service_account_info["client_email"],
-            key_data=key_json_str
-        )
-        
-        # ระบุ project สองจุดเพื่อให้ครอบคลุมการประมวลผล Cloud
-        ee.Initialize(credentials, project=project_id, opt_url='https://earthengine.googleapis.com')
-        
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ GEE: {e}")
-
-init_gee()
-# --- 1. ตั้งค่าหน้าเว็บ & Custom CSS สไตล์โมเดิร์น ---
+# --- 1. ตั้งค่าหน้าเว็บ & Custom CSS สไตล์ Copernicus Dark Navy Theme ---
 st.set_page_config(
-    page_title="ShrimpSmart - ระบบวิเคราะห์และวางแผนจัดการบ่อกุ้งหลายบ่อ",
+    page_title="ShrimpSmart Browser - ระบบวิเคราะห์คุณภาพน้ำบ่อกุ้ง",
     page_icon="🦐",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
+# Custom CSS ตกแต่งให้คล้าย Copernicus Browser (Sidebar น้ำเงินเข้ม #182b49)
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric {
-        background-color: #ffffff;
-        padding: 12px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        border: 1px solid #e9ecef;
+    /* ซ่อน Header และ Footer เปล่าของ Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* พื้นหลังส่วนหลัก */
+    .stApp {
+        background-color: #f4f6f9;
     }
+    
+    /* ตกแต่ง Sidebar สไตล์ Copernicus (Dark Navy Blue) */
+    [data-testid="stSidebar"] {
+        background-color: #182b49 !important;
+    }
+    
+    [data-testid="stSidebar"] * {
+        color: #ffffff !important;
+    }
+    
+    /* ปรับแต่งปุ่มกดหลัก */
     .stButton>button {
-        background-color: #007bff;
+        background-color: #7da100 !important; /* สีเขียวสไตล์ Copernicus button */
+        color: #ffffff !important;
+        font-weight: bold !important;
+        font-size: 16px !important;
+        border-radius: 4px !important;
+        border: none !important;
+        padding: 12px 20px !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2) !important;
+        transition: all 0.2s !important;
+    }
+    
+    .stButton>button:hover {
+        background-color: #8cb500 !important;
+        transform: translateY(-1px);
+    }
+    
+    /* ตกแต่งกล่อง Metric สรุปผล */
+    [data-testid="stMetricValue"] {
+        font-size: 24px !important;
+        font-weight: bold !important;
+        color: #182b49 !important;
+    }
+    
+    /* ปรับปรุงหัวข้อ */
+    .copernicus-header {
+        background-color: #182b49;
         color: white;
-        font-weight: bold;
-        border-radius: 8px;
-        padding: 10px 24px;
-        border: none;
-        box-shadow: 0 4px 6px rgba(0,123,255,0.2);
+        padding: 15px 25px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+        box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+    }
+    .copernicus-header h2 {
+        margin: 0;
+        color: #ffffff;
+        font-weight: 600;
+    }
+    .copernicus-header p {
+        margin: 5px 0 0 0;
+        color: #b0c4de;
+        font-size: 14px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -65,27 +88,30 @@ st.markdown("""
 def init_gee():
     try:
         service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
+        project_id = service_account_info.get("project_id", "shrimp-water-quality")
         key_json_str = json.dumps(service_account_info)
+        
         credentials = ee.ServiceAccountCredentials(
             service_account_info["client_email"],
             key_data=key_json_str
         )
-        ee.Initialize(credentials)
+        ee.Initialize(credentials, project=project_id, opt_url='https://earthengine.googleapis.com')
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ GEE: {e}")
 
 init_gee()
 
-# --- Header Zone ---
-st.title("🦐 ShrimpSmart: ระบบวาดบ่อและวิเคราะห์คุณภาพน้ำหลายบ่อพร้อมกัน")
-st.caption("ป้อนพิกัดฟาร์ม วาดรูปทรงบ่อกุ้งหลายๆ บ่อ แล้วประมวลผลดัชนีค่าน้ำอัตโนมัติจากภาพดาวเทียม Sentinel-2")
+# --- Top Banner Header ---
+st.markdown("""
+    <div class="copernicus-header">
+        <h2>🦐 ShrimpSmart Browser | ระบบวิเคราะห์คุณภาพน้ำบ่อกุ้งจากดาวเทียม</h2>
+        <p>เครื่องมือตรวจเช็คดัชนี NDCI, NDTI, CDOM, NDWI รายบ่อ พร้อมตารางแผนการจัดการฟาร์มประจำวัน</p>
+    </div>
+""", unsafe_allow_html=True)
 
-st.divider()
+# --- Sidebar Controls (Copernicus Style) ---
+st.sidebar.markdown("### ⚙️ ค้นหาพิกัด & ตัวเลือกบ่อ")
 
-# --- Sidebar Controls ---
-st.sidebar.header("⚙️ เลือกตั้งค่าการค้นหาและเวลา")
-
-# Preset บ่อกุ้ง
 PRESET_PONDS = {
     "กำหนดเอง (พิมพ์พิกัด)": [13.5821, 100.9543],
     "บ่อที่ 1 (อ.บางปะกง)": [13.5821, 100.9543],
@@ -95,44 +121,57 @@ PRESET_PONDS = {
     "บ่อที่ 5 (อ.บ้านโพธิ์)": [13.6150, 101.0250],
 }
 
-selected_preset = st.sidebar.selectbox("🏢 ตัวเลือกพิกัดเริ่มต้น", list(PRESET_PONDS.keys()))
+selected_preset = st.sidebar.selectbox("🏢 พิกัดเริ่มต้นประจำบ่อ", list(PRESET_PONDS.keys()))
 default_lat, default_lon = PRESET_PONDS[selected_preset]
 
-st.sidebar.subheader("📍 ระบุพิกัดค้นหาตำแหน่ง")
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📍 ค้นหาตำแหน่งระบุพิกัด")
 col_lat, col_lon = st.sidebar.columns(2)
-lat_input = col_lat.number_input("ละติจูด", value=default_lat, format="%.6f")
-lon_input = col_lon.number_input("ลองจิจูด", value=default_lon, format="%.6f")
+lat_input = col_lat.number_input("ละติจูด (Lat)", value=default_lat, format="%.6f")
+lon_input = col_lon.number_input("ลองจิจูด (Lon)", value=default_lon, format="%.6f")
 zoom_input = st.sidebar.slider("ระดับ Zoom แผนที่", 12, 18, 16)
 
-st.sidebar.subheader("📅 เลือกช่วงเวลาวิเคราะห์")
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📅 ช่วงเวลาข้อมูลดาวเทียม")
 end_date = st.sidebar.date_input("วันที่สิ้นสุด", datetime.now())
 start_date = st.sidebar.date_input("วันที่เริ่มต้น (ดูแนวโน้ม)", end_date - timedelta(days=60))
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🛰️ ชุดข้อมูลดาวเทียม")
+st.sidebar.info("• Satellite: Sentinel-2 L2A\n• Resolution: 10m\n• Refresh Rate: 3-5 วัน")
 
 # --- Main Layout ---
 col_map, col_info = st.columns([7, 5])
 
 with col_map:
-    st.subheader("🗺️ แผนที่ฟาร์มกุ้ง (ใช้วาดหลายบ่อ)")
+    st.subheader("🗺️ แผนที่สำรวจผิวน้ำ (วาดโพลีกอนหลายบ่อได้ที่นี่)")
     m = folium.Map(location=[lat_input, lon_input], zoom_start=zoom_input)
-    folium.TileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Satellite').add_to(m)
+    folium.TileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google Satellite', name='Google Satellite').add_to(m)
+    folium.TileLayer('openstreetmap', name='OpenStreetMap').add_to(m)
+    folium.LayerControl().add_to(m)
     
     # หมุดชี้ตำแหน่งพิกัดค้นหา
     folium.Marker([lat_input, lon_input], popup="ตำแหน่งพิกัดค้นหา", icon=folium.Icon(color="red", icon="info-sign")).add_to(m)
 
     from folium.plugins import Draw
-    Draw(export=True, filename='my_ponds.geojson').add_to(m)
+    Draw(
+        export=True,
+        filename='my_shrimp_ponds.geojson',
+        position='topleft',
+        draw_options={'polyline': False, 'circle': False, 'marker': False, 'circlemarker': False}
+    ).add_to(m)
     
-    map_data = st_folium(m, width=700, height=480, key="shrimp_map")
+    map_data = st_folium(m, width=720, height=480, key="shrimp_map")
 
 with col_info:
-    st.subheader("📌 ขั้นตอนการใช้งาน")
+    st.subheader("📌 คำแนะนำการใช้งานระบบ")
     st.info("""
-    1. **ค้นหาตำแหน่ง:** ป้อนพิกัด ละติจูด/ลองจิจูด ทางแถบซ้ายมือ แผนที่จะย้ายไปตำแหน่งนั้น
-    2. **วาดหลายๆ บ่อ:** ใช้เครื่องมือวาดสี่เหลี่ยม/โพลีกอนบนแผนที่ด้านซ้าย **วาดล้อมรอบบ่อกุ้งหลายๆ บ่อได้เลย** (บ่อ 1, บ่อ 2, บ่อ 3 ฯลฯ)
-    3. **เริ่มวิเคราะห์:** กดปุ่มด้านล่างเพื่อประมวลผลค่าน้ำทุกบ่อพร้อมกัน
+    1. **ค้นหาตำแหน่ง:** ใส่พิกัด ละติจูด/ลองจิจูด ในเมนูด้านซ้าย เพื่อซูมไปยังฟาร์ม
+    2. **วาดรูปทรงบ่อ:** ใช้เครื่องมือวาดสี่เหลี่ยม/โพลีกอน **วาดล้อมรอบบ่อกุ้งกี่บ่อก็ได้พร้อมกัน** (บ่อ 1, บ่อ 2, บ่อ 3 ฯลฯ)
+    3. **ประมวลผล:** กดปุ่ม **'วิเคราะห์คุณภาพน้ำทุกบ่อ'** ด้านล่าง
     """)
     
-    btn_analyze = st.button("🚀 ประมวลผลและสร้างแผนจัดการบ่อกุ้งทุกบ่อ", use_container_width=True)
+    btn_analyze = st.button("🚀 วิเคราะห์คุณภาพน้ำทุกบ่อพร้อมกัน", use_container_width=True)
 
 # --- Function สำหรับคำนวณค่าน้ำ 4 ดัชนี ---
 def add_indices(img):
@@ -194,7 +233,6 @@ if btn_analyze:
             geom = ee.Geometry.Polygon(coords)
             ponds_to_process.append({'name': f'บ่อที่วาด {idx + 1}', 'geometry': geom})
     else:
-        # หากไม่ได้วาด ให้สร้างบัฟเฟอร์รัศมี 30 เมตรรอบพิกัดที่พิมพ์ค้นหา
         geom = ee.Geometry.Point([lon_input, lat_input]).buffer(30)
         ponds_to_process.append({'name': 'บ่อตามพิกัดค้นหา', 'geometry': geom})
         st.warning("⚠️ ไม่พบรูปทรงที่วาดบนแผนที่ ระบบจะวัดพื้นที่รัศมี 30 เมตรรอบจุดพิกัดค้นหาแทน")
@@ -301,6 +339,6 @@ if btn_analyze:
                 st.download_button(
                     label="📥 ดาวน์โหลดตารางแผนการจัดการบ่อกุ้งทุกบ่อ (CSV)",
                     data=csv,
-                    file_name='multi_pond_action_plan.csv',
+                    file_name='shrimp_farm_action_plan.csv',
                     mime='text/csv'
                 )
