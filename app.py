@@ -7,67 +7,56 @@ import plotly.express as px
 import json
 from datetime import datetime, timedelta
 
-# --- 1. ตั้งค่าหน้าเว็บ & Custom CSS สไตล์คลีน สะอาดตา ---
+# 1. ยืนยันตัวตน GEE บน Streamlit Cloud
+@st.cache_resource
+def init_gee():
+    try:
+        service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
+        
+        # ดึง project_id จาก Secrets
+        project_id = service_account_info.get("project_id", "shrimp-water-quality")
+        
+        # แปลง dict ให้เป็น JSON String
+        key_json_str = json.dumps(service_account_info)
+        
+        credentials = ee.ServiceAccountCredentials(
+            service_account_info["client_email"],
+            key_data=key_json_str
+        )
+        
+        # ระบุ project สองจุดเพื่อให้ครอบคลุมการประมวลผล Cloud
+        ee.Initialize(credentials, project=project_id, opt_url='https://earthengine.googleapis.com')
+        
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ GEE: {e}")
+
+init_gee()
+
+# --- 1. ตั้งค่าหน้าเว็บ & Custom CSS สไตล์โมเดิร์น ---
 st.set_page_config(
-    page_title="ระบบวิเคราะห์คุณภาพน้ำบ่อกุ้งจากดาวเทียม",
+    page_title="ShrimpSmart - ระบบวิเคราะห์และวางแผนจัดการบ่อกุ้งหลายบ่อ",
     page_icon="🦐",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Custom CSS จัดแต่ง Layout และยืดแผนที่ให้เต็มพื้นที่
 st.markdown("""
     <style>
-    #MainMenu, footer, header {visibility: hidden !important;}
-    
-    /* ปรับแต่งพื้นที่หลักให้กว้างชิดขอบ */
-    .main .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
-        max-width: 100% !important;
+    .main { background-color: #f8f9fa; }
+    .stMetric {
+        background-color: #ffffff;
+        padding: 12px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border: 1px solid #e9ecef;
     }
-    
-    /* สไตล์ปุ่มประมวลผลด้านซ้าย */
     .stButton>button {
-        background-color: #4f46e5 !important;
-        color: #ffffff !important;
-        font-weight: bold !important;
-        font-size: 16px !important;
-        border-radius: 8px !important;
-        border: none !important;
-        padding: 12px 20px !important;
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3) !important;
-        transition: all 0.2s !important;
-    }
-    
-    .stButton>button:hover {
-        background-color: #4338ca !important;
-        transform: translateY(-1px);
-    }
-    
-    /* ปรับแต่งกล่อง Info คำแนะนำใน Sidebar */
-    .sidebar-info-box {
-        background-color: #eff6ff;
-        border: 1px solid #bfdbfe;
+        background-color: #007bff;
+        color: white;
+        font-weight: bold;
         border-radius: 8px;
-        padding: 14px;
-        margin-top: 10px;
-        margin-bottom: 15px;
-    }
-    .sidebar-info-box h4 {
-        color: #1e40af;
-        margin-top: 0;
-        margin-bottom: 8px;
-        font-size: 15px;
-    }
-    .sidebar-info-box ol {
-        margin: 0;
-        padding-left: 18px;
-        color: #1e3a8a;
-        font-size: 13px;
-        line-height: 1.6;
+        padding: 10px 24px;
+        border: none;
+        box-shadow: 0 4px 6px rgba(0,123,255,0.2);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -77,111 +66,76 @@ st.markdown("""
 def init_gee():
     try:
         service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
-        project_id = service_account_info.get("project_id", "shrimp-water-quality")
         key_json_str = json.dumps(service_account_info)
-        
         credentials = ee.ServiceAccountCredentials(
             service_account_info["client_email"],
             key_data=key_json_str
         )
-        ee.Initialize(credentials, project=project_id, opt_url='https://earthengine.googleapis.com')
+        ee.Initialize(credentials)
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ GEE: {e}")
 
 init_gee()
 
-# --- 3. Sidebar ด้านซ้าย (รวมคำแนะนำ + ปุ่มวิเคราะห์ไว้ที่เดียว) ---
-with st.sidebar:
-    st.title("⚙️ ตั้งค่าการค้นหาและเวลา")
-    
-    st.markdown("### 🏢 ตัวเลือกพิกัดเริ่มต้น")
-    PRESET_PONDS = {
-        "กำหนดเอง (พิมพ์พิกัด)": [13.5821, 100.9543],
-        "บ่อที่ 1 (อ.บางปะกง)": [13.5821, 100.9543],
-        "บ่อที่ 2 (อ.บางปะกง)": [13.5850, 100.9580],
-        "บ่อที่ 3 (อ.บางปะกง)": [13.5790, 100.9510],
-        "บ่อที่ 4 (อ.บ้านโพธิ์)": [13.6120, 101.0210],
-        "บ่อที่ 5 (อ.บ้านโพธิ์)": [13.6150, 101.0250],
-    }
-    selected_preset = st.selectbox("เลือกตำแหน่งเริ่มต้น", list(PRESET_PONDS.keys()))
-    default_lat, default_lon = PRESET_PONDS[selected_preset]
-
-    st.markdown("### 📍 ระบุพิกัดค้นหาตำแหน่ง")
-    col_lat, col_lon = st.columns(2)
-    lat_input = col_lat.number_input("ละติจูด", value=default_lat, format="%.6f")
-    lon_input = col_lon.number_input("ลองจิจูด", value=default_lon, format="%.6f")
-    zoom_input = st.slider("ระดับ Zoom แผนที่", 12, 18, 16)
-
-    st.markdown("### 📅 เลือกช่วงเวลาวิเคราะห์")
-    today = datetime.now()
-    min_date = datetime(2017, 1, 1)
-    
-    end_date = st.date_input("วันที่สิ้นสุด", value=today, min_value=min_date, max_value=today)
-    start_date = st.date_input("วันที่เริ่มต้น (ดูแนวโน้ม)", value=end_date - timedelta(days=60), min_value=min_date, max_value=today)
-
-    st.markdown("---")
-    
-    # 📌 คำแนะนำการใช้งาน (ย้ายมาฝั่งซ้าย)
-    st.markdown("""
-        <div class="sidebar-info-box">
-            <h4>📌 ขั้นตอนการใช้งาน</h4>
-            <ol>
-                <li><b>ค้นหาตำแหน่ง:</b> ป้อนพิกัด แถบซ้ายมือ แผนที่จะย้ายไปตำแหน่งนั้น</li>
-                <li><b>วาดหลายๆ บ่อ:</b> ใช้เครื่องมือวาดสี่เหลี่ยม/โพลีกอน บนแผนที่ <b>วาดล้อมรอบบ่อกุ้งหลายๆ บ่อได้เลย</b> (บ่อ 1, บ่อ 2, บ่อ 3 ฯลฯ)</li>
-                <li><b>เริ่มวิเคราะห์:</b> กดปุ่มด้านล่างเพื่อประมวลผลค่าน้ำทุกบ่อพร้อมกัน</li>
-            </ol>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # 🚀 ปุ่มประมวลผล (ย้ายมาฝั่งซ้าย)
-    btn_analyze = st.button("🚀 ประมวลผลและสร้างแผนจัดการบ่อกุ้งทุกบ่อ", use_container_width=True)
-
-# --- 4. พื้นที่แผนที่ขวามือ (ขยายเต็มจอใหญ่สะใจ) ---
-st.subheader("🗺️ แผนที่ฟาร์มกุ้ง (ใช้วาดหลายบ่อ)")
+# --- Header Zone ---
+st.title("🦐 ShrimpSmart: ระบบวาดบ่อและวิเคราะห์คุณภาพน้ำหลายบ่อพร้อมกัน")
 st.caption("ป้อนพิกัดฟาร์ม วาดรูปทรงบ่อกุ้งหลายๆ บ่อ แล้วประมวลผลดัชนีค่าน้ำอัตโนมัติจากภาพดาวเทียม Sentinel-2")
 
-m = folium.Map(location=[lat_input, lon_input], zoom_start=zoom_input, tiles=None, control_scale=True)
+st.divider()
 
-# ภาพดาวเทียมรายละเอียดสูง Google Satellite
-folium.TileLayer(
-    tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-    attr='Google Satellite',
-    name='Google Satellite',
-    overlay=False,
-    control=True
-).add_to(m)
+# --- Sidebar Controls ---
+st.sidebar.header("⚙️ เลือกตั้งค่าการค้นหาและเวลา")
 
-# ภาพดาวเทียมพร้อมชื่อสถานที่/ถนน Google Hybrid
-folium.TileLayer(
-    tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-    attr='Google Hybrid',
-    name='Google Satellite Hybrid',
-    overlay=False,
-    control=True
-).add_to(m)
+# Preset บ่อกุ้ง
+PRESET_PONDS = {
+    "กำหนดเอง (พิมพ์พิกัด)": [13.5821, 100.9543],
+    "บ่อที่ 1 (อ.บางปะกง)": [13.5821, 100.9543],
+    "บ่อที่ 2 (อ.บางปะกง)": [13.5850, 100.9580],
+    "บ่อที่ 3 (อ.บางปะกง)": [13.5790, 100.9510],
+    "บ่อที่ 4 (อ.บ้านโพธิ์)": [13.6120, 101.0210],
+    "บ่อที่ 5 (อ.บ้านโพธิ์)": [13.6150, 101.0250],
+}
 
-folium.LayerControl().add_to(m)
+selected_preset = st.sidebar.selectbox("🏢 ตัวเลือกพิกัดเริ่มต้น", list(PRESET_PONDS.keys()))
+default_lat, default_lon = PRESET_PONDS[selected_preset]
 
-# หมุดพิกัดค้นหา
-folium.Marker(
-    [lat_input, lon_input],
-    popup=f"พิกัดค้นหา: {lat_input}, {lon_input}",
-    icon=folium.Icon(color="red", icon="info-sign")
-).add_to(m)
+st.sidebar.subheader("📍 ระบุพิกัดค้นหาตำแหน่ง")
+col_lat, col_lon = st.sidebar.columns(2)
+lat_input = col_lat.number_input("ละติจูด", value=default_lat, format="%.6f")
+lon_input = col_lon.number_input("ลองจิจูด", value=default_lon, format="%.6f")
+zoom_input = st.sidebar.slider("ระดับ Zoom แผนที่", 12, 18, 16)
 
-# เครื่องมือวาดบ่อกุ้ง
-from folium.plugins import Draw
-Draw(
-    export=True,
-    filename='my_shrimp_ponds.geojson',
-    position='topleft',
-    draw_options={'polyline': False, 'circle': False, 'marker': False, 'circlemarker': False}
-).add_to(m)
+st.sidebar.subheader("📅 เลือกช่วงเวลาวิเคราะห์")
+end_date = st.sidebar.date_input("วันที่สิ้นสุด", datetime.now())
+start_date = st.sidebar.date_input("วันที่เริ่มต้น (ดูแนวโน้ม)", end_date - timedelta(days=60))
 
-# แสดงแผนที่เต็มความกว้าง และเพิ่มความสูงเป็น 850px เต็มหน้าจอ
-map_data = st_folium(m, width="100%", height=850, key="shrimp_map")
+# --- Main Layout ---
+col_map, col_info = st.columns([7, 5])
 
-# --- 5. ฟังก์ชันคำนวณ & Action Plan ---
+with col_map:
+    st.subheader("🗺️ แผนที่ฟาร์มกุ้ง (ใช้วาดหลายบ่อ)")
+    m = folium.Map(location=[lat_input, lon_input], zoom_start=zoom_input)
+    folium.TileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Satellite').add_to(m)
+    
+    # หมุดชี้ตำแหน่งพิกัดค้นหา
+    folium.Marker([lat_input, lon_input], popup="ตำแหน่งพิกัดค้นหา", icon=folium.Icon(color="red", icon="info-sign")).add_to(m)
+
+    from folium.plugins import Draw
+    Draw(export=True, filename='my_ponds.geojson').add_to(m)
+    
+    map_data = st_folium(m, width=700, height=480, key="shrimp_map")
+
+with col_info:
+    st.subheader("📌 ขั้นตอนการใช้งาน")
+    st.info("""
+    1. **ค้นหาตำแหน่ง:** ป้อนพิกัด ละติจูด/ลองจิจูด ทางแถบซ้ายมือ แผนที่จะย้ายไปตำแหน่งนั้น
+    2. **วาดหลายๆ บ่อ:** ใช้เครื่องมือวาดสี่เหลี่ยม/โพลีกอนบนแผนที่ด้านซ้าย **วาดล้อมรอบบ่อกุ้งหลายๆ บ่อได้เลย** (บ่อ 1, บ่อ 2, บ่อ 3 ฯลฯ)
+    3. **เริ่มวิเคราะห์:** กดปุ่มด้านล่างเพื่อประมวลผลค่าน้ำทุกบ่อพร้อมกัน
+    """)
+    
+    btn_analyze = st.button("🚀 ประมวลผลและสร้างแผนจัดการบ่อกุ้งทุกบ่อ", use_container_width=True)
+
+# --- Function สำหรับคำนวณค่าน้ำ 4 ดัชนี ---
 def add_indices(img):
     ndwi = img.normalizedDifference(['B3', 'B8']).rename('NDWI')
     ndci = img.normalizedDifference(['B5', 'B4']).rename('NDCI')
@@ -189,6 +143,7 @@ def add_indices(img):
     cdom = img.select('B3').divide(img.select('B1')).rename('CDOM')
     return img.addBands([ndwi, ndci, ndti, cdom])
 
+# --- ฟังก์ชันสร้าง Action Plan คำแนะนำรายบ่อ ---
 def generate_action_plan(ndci, ndti, cdom, ndwi):
     if ndci < 0.10 and ndti > 0.15:
         risk = "🔴 วิกฤต (แพลงก์ตอนดรอป/น้ำล้ม)"
@@ -229,7 +184,7 @@ def generate_action_plan(ndci, ndti, cdom, ndwi):
         'Treatment': treatment
     }
 
-# --- 6. ส่วนประมวลผลเมื่อกดปุ่มวิเคราะห์ ---
+# --- Processing Zone ---
 if btn_analyze:
     ponds_to_process = []
 
@@ -240,6 +195,7 @@ if btn_analyze:
             geom = ee.Geometry.Polygon(coords)
             ponds_to_process.append({'name': f'บ่อที่วาด {idx + 1}', 'geometry': geom})
     else:
+        # หากไม่ได้วาด ให้สร้างบัฟเฟอร์รัศมี 30 เมตรรอบพิกัดที่พิมพ์ค้นหา
         geom = ee.Geometry.Point([lon_input, lat_input]).buffer(30)
         ponds_to_process.append({'name': 'บ่อตามพิกัดค้นหา', 'geometry': geom})
         st.warning("⚠️ ไม่พบรูปทรงที่วาดบนแผนที่ ระบบจะวัดพื้นที่รัศมี 30 เมตรรอบจุดพิกัดค้นหาแทน")
@@ -297,7 +253,7 @@ if btn_analyze:
                         'รายละเอียดวิเคราะห์': plan['Detail']
                     })
 
-                    # Time Series Extract
+                    # Time Series
                     s2_indexed = s2.map(add_indices)
                     def extract_stats(img):
                         d = ee.Date(img.get('system:time_start')).format('YYYY-MM-dd')
@@ -316,17 +272,19 @@ if btn_analyze:
                                 'CDOM': round(p['CDOM'], 3)
                             })
 
-            # --- แสดงผลตารางและกราฟด้านล่างแผนที่ ---
+            # --- 1. ตารางสรุปค่าน้ำดัชนี ---
             st.divider()
             st.subheader("📊 ตารางสรุปดัชนีคุณภาพน้ำจากดาวเทียมล่าสุด (เทียบทุกบ่อ)")
             df_summary = pd.DataFrame(summary_results)
             st.dataframe(df_summary, use_container_width=True)
 
+            # --- 2. ตารางแผนการจัดการบ่อกุ้ง (Daily Action Plan Table) ---
             st.divider()
-            st.subheader("📋 ตารางแผนการจัดการและคำแนะนำการดูแลบ่อกุ้ง (Daily Action Plan)")
+            st.subheader("📋 ตารางแผนการจัดการและคำแนะนำการดูแลบ่อกุ้ง (Action Plan)")
             df_action = pd.DataFrame(action_plan_list)
             st.dataframe(df_action, use_container_width=True)
 
+            # --- 3. กราฟ Time Series เปรียบเทียบ ---
             if time_series_all:
                 st.divider()
                 st.subheader("📈 เปรียบเทียบแนวโน้มย้อนหลังรายบ่อ")
@@ -339,10 +297,11 @@ if btn_analyze:
                 fig.update_layout(hovermode="x unified", template="plotly_white")
                 st.plotly_chart(fig, use_container_width=True)
 
+                # ปุ่มดาวน์โหลด
                 csv = df_action.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="📥 ดาวน์โหลดตารางแผนการจัดการบ่อกุ้งทุกบ่อ (CSV)",
                     data=csv,
-                    file_name='shrimp_farm_action_plan.csv',
+                    file_name='multi_pond_action_plan.csv',
                     mime='text/csv'
                 )
