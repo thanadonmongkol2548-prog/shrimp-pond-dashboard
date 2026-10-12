@@ -7,79 +7,118 @@ import plotly.express as px
 import json
 from datetime import datetime, timedelta
 
-# --- 1. ตั้งค่าหน้าเว็บ & Custom CSS สไตล์ Copernicus Browser ---
+# --- 1. ตั้งค่าหน้าเว็บ & Override CSS ให้เหมือน Copernicus Browser 100% ---
 st.set_page_config(
-    page_title="ShrimpSmart Browser - ระบบวิเคราะห์คุณภาพน้ำบ่อกุ้ง",
-    page_icon="🦐",
+    page_title="Copernicus Browser - Shrimp Water Quality Analytics",
+    page_icon="🛰️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS จัดหน้าเว็บสไตล์ Copernicus (Sidebar น้ำเงินเข้ม #182b49)
 st.markdown("""
     <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    
-    .stApp {
-        background-color: #0f172a;
-        color: #f8fafc;
+    /* ซ่อนองค์ประกอบเดิมของ Streamlit ทั้งหมด */
+    #MainMenu, footer, header {visibility: hidden;}
+    .block-container {
+        padding-top: 0rem !important;
+        padding-bottom: 0rem !important;
+        padding-left: 0rem !important;
+        padding-right: 0rem !important;
+        max-width: 100% !important;
     }
     
-    /* Sidebar สไตล์ Copernicus */
+    /* พื้นหลังหลักฝั่งขวา */
+    .stApp {
+        background-color: #f8fafc;
+    }
+    
+    /* Copernicus Sidebar Style (#182b49) */
     [data-testid="stSidebar"] {
         background-color: #182b49 !important;
-        border-right: 1px solid #1e293b;
+        min-width: 360px !important;
+        max-width: 360px !important;
+        border-right: 1px solid #0f172a;
     }
     
     [data-testid="stSidebar"] * {
-        color: #f1f5f9 !important;
+        color: #ffffff !important;
     }
     
-    /* ปุ่มวิเคราะห์สีเขียว Copernicus */
+    /* Copernicus Header Logo & Navigation */
+    .copernicus-brand {
+        padding: 15px 10px 10px 10px;
+        border-bottom: 1px solid #2a3f6d;
+        margin-bottom: 15px;
+    }
+    .copernicus-logo-text {
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        color: #ffffff;
+    }
+    .copernicus-logo-sub {
+        font-size: 11px;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    /* Tab VISUALISE / SEARCH */
+    .copernicus-tabs {
+        display: flex;
+        background-color: #0f172a;
+        border-radius: 4px;
+        padding: 3px;
+        margin-bottom: 15px;
+    }
+    .copernicus-tab-item {
+        flex: 1;
+        text-align: center;
+        padding: 8px;
+        font-size: 13px;
+        font-weight: bold;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    .copernicus-tab-active {
+        background-color: #1d4ed8;
+        color: white !important;
+    }
+    
+    /* Section Headers in Sidebar */
+    .sidebar-section-title {
+        font-size: 11px;
+        font-weight: bold;
+        color: #94a3b8 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-top: 15px;
+        margin-bottom: 8px;
+    }
+    
+    /* Copernicus Action Button (Light Green #7da100) */
     .stButton>button {
-        background-color: #7da100 !important;
-        color: #ffffff !important;
-        font-weight: bold !important;
-        font-size: 16px !important;
-        border-radius: 6px !important;
+        background-color: #b5d334 !important;
+        color: #182b49 !important;
+        font-weight: 800 !important;
+        font-size: 14px !important;
+        border-radius: 4px !important;
         border: none !important;
-        padding: 12px 20px !important;
-        box-shadow: 0 4px 10px rgba(125, 161, 0, 0.3) !important;
+        padding: 10px 16px !important;
+        width: 100% !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
         transition: all 0.2s !important;
     }
-    
     .stButton>button:hover {
-        background-color: #8cb500 !important;
-        transform: translateY(-2px);
+        background-color: #c8e642 !important;
+        transform: translateY(-1px);
     }
     
-    /* Header Bar */
-    .copernicus-header {
-        background: linear-gradient(135deg, #182b49 0%, #0f172a 100%);
-        color: white;
-        padding: 18px 25px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        border: 1px solid #1e293b;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    }
-    .copernicus-header h2 {
-        margin: 0;
-        color: #ffffff;
-        font-weight: 700;
-        font-size: 24px;
-    }
-    .copernicus-header p {
-        margin: 6px 0 0 0;
-        color: #94a3b8;
-        font-size: 14px;
-    }
-    
-    /* Dataframe สไตล์ Dark Mode */
-    [data-testid="stDataFrame"] {
-        background-color: #1e293b;
-        border-radius: 8px;
+    /* Custom Inputsใน Sidebar */
+    .stSelectbox div[data-baseweb="select"] {
+        background-color: #0f172a !important;
+        border-color: #334155 !important;
+        color: white !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -102,103 +141,102 @@ def init_gee():
 
 init_gee()
 
-# --- Top Banner Header ---
-st.markdown("""
-    <div class="copernicus-header">
-        <h2>🦐 ShrimpSmart Browser | ระบบวิเคราะห์คุณภาพน้ำบ่อกุ้งจากดาวเทียม</h2>
-        <p>ค้นหาพิกัดฟาร์มกุ้ง วาดโพลีกอนระบุบ่อ แล้ววิเคราะห์ดัชนี NDCI, NDTI, CDOM, NDWI ได้ทันที</p>
-    </div>
-""", unsafe_allow_html=True)
+# --- 3. Sidebar (Copernicus Browser Style Side Navigation) ---
+with st.sidebar:
+    # Header Branding
+    st.markdown("""
+        <div class="copernicus-brand">
+            <div class="copernicus-logo-text">copernicus <span style="color:#b5d334; font-size:14px;">BROWSER</span></div>
+            <div class="copernicus-logo-sub">Shrimp Pond Water Quality System</div>
+        </div>
+        <div class="copernicus-tabs">
+            <div class="copernicus-tab-item copernicus-tab-active">VISUALISE</div>
+            <div class="copernicus-tab-item" style="color:#64748b;">SEARCH</div>
+        </div>
+    """, unsafe_allow_html=True)
 
-# --- Sidebar Controls (Copernicus Style) ---
-st.sidebar.markdown("### 🏢 พิกัดบ่อกุ้งประจำฟาร์ม")
+    # Date Selector Section
+    st.markdown('<div class="sidebar-section-title">DATE: SINGLE</div>', unsafe_allow_html=True)
+    end_date = st.date_input("เลือกวันที่วิเคราะห์", datetime.now(), label_visibility="collapsed")
+    start_date = end_date - timedelta(days=60)
 
-PRESET_PONDS = {
-    "กำหนดเอง (พิมพ์พิกัด)": [13.5821, 100.9543],
-    "บ่อที่ 1 (อ.บางปะกง)": [13.5821, 100.9543],
-    "บ่อที่ 2 (อ.บางปะกง)": [13.5850, 100.9580],
-    "บ่อที่ 3 (อ.บางปะกง)": [13.5790, 100.9510],
-    "บ่อที่ 4 (อ.บ้านโพธิ์)": [13.6120, 101.0210],
-    "บ่อที่ 5 (อ.บ้านโพธิ์)": [13.6150, 101.0250],
-}
+    # Dataset Selection
+    st.markdown('<div class="sidebar-section-title">DATA COLLECTIONS</div>', unsafe_allow_html=True)
+    dataset = st.selectbox("เลือกชุดข้อมูลดาวเทียม", ["Sentinel-2 L2A (Atmospherically Corrected)", "Sentinel-2 L1C"], label_visibility="collapsed")
 
-selected_preset = st.sidebar.selectbox("เลือกตำแหน่งเริ่มต้น", list(PRESET_PONDS.keys()))
-default_lat, default_lon = PRESET_PONDS[selected_preset]
+    # Water Quality Layer Choice
+    st.markdown('<div class="sidebar-section-title">VISUALIZATION LAYERS</div>', unsafe_allow_html=True)
+    layer_mode = st.radio("เลือกดัชนีแสดงผลชั้นสี", [
+        "True Color (ภาพสีธรรมชาติ)",
+        "NDCI (คลอโรฟิลล์-เอ / แพลงก์ตอน)",
+        "NDTI (ความขุ่น / ตะกอน)",
+        "CDOM (สารอินทรีย์สะสม)",
+        "NDWI (ดัชนีผิวน้ำ)"
+    ], label_visibility="collapsed")
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📍 ระบุพิกัดค้นหา (Lat/Lon)")
-col_lat, col_lon = st.sidebar.columns(2)
-lat_input = col_lat.number_input("ละติจูด", value=default_lat, format="%.6f")
-lon_input = col_lon.number_input("ลองจิจูด", value=default_lon, format="%.6f")
-zoom_input = st.sidebar.slider("ระดับ Zoom (ขยายภาพ)", 12, 18, 16)
+    # Pond Search & Coordinates
+    st.markdown('<div class="sidebar-section-title">PRESET PONDS & COORDINATES</div>', unsafe_allow_html=True)
+    PRESET_PONDS = {
+        "กำหนดเอง (พิมพ์พิกัด)": [13.5821, 100.9543],
+        "บ่อที่ 1 (อ.บางปะกง)": [13.5821, 100.9543],
+        "บ่อที่ 2 (อ.บางปะกง)": [13.5850, 100.9580],
+        "บ่อที่ 3 (อ.บางปะกง)": [13.5790, 100.9510],
+        "บ่อที่ 4 (อ.บ้านโพธิ์)": [13.6120, 101.0210],
+        "บ่อที่ 5 (อ.บ้านโพธิ์)": [13.6150, 101.0250],
+    }
+    selected_preset = st.selectbox("เลือกบ่อกุ้งประจำฟาร์ม", list(PRESET_PONDS.keys()), label_visibility="collapsed")
+    default_lat, default_lon = PRESET_PONDS[selected_preset]
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📅 ช่วงเวลาข้อมูลดาวเทียม")
-end_date = st.sidebar.date_input("วันที่สิ้นสุด", datetime.now())
-start_date = st.sidebar.date_input("วันที่เริ่มต้น (ดูแนวโน้ม)", end_date - timedelta(days=60))
+    col_lat, col_lon = st.columns(2)
+    lat_input = col_lat.number_input("Lat", value=default_lat, format="%.6f")
+    lon_input = col_lon.number_input("Lon", value=default_lon, format="%.6f")
+    zoom_input = st.slider("Zoom Level", 12, 18, 16)
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🛰️ ชุดข้อมูลภาพดาวเทียม")
-st.sidebar.info("• Satellite: Sentinel-2 L2A\n• Ground Resolution: 10m\n• Base Map: Google High-Res Satellite")
+    st.markdown("---")
+    btn_analyze = st.button("🚀 ANALYZE PONDS (วิเคราะห์ทุกบ่อ)", use_container_width=True)
 
-# --- Main Layout ---
-col_map, col_info = st.columns([7, 5])
+# --- 4. Main Area: Full Width Copernicus Map View ---
+# สั่งสร้าง Map ภาพดาวเทียม Google Satellite คมชัดสูงเต็มพื้นที่
+m = folium.Map(location=[lat_input, lon_input], zoom_start=zoom_input, tiles=None, control_scale=True)
 
-with col_map:
-    st.subheader("🗺️ แผนที่ดาวเทียมภาพจริง (ใช้วาดบ่อกุ้ง)")
-    
-    # สั่งสร้าง Map โดยตั้ง tiles=None แล้วใส่ Google Satellite เป็นชั้นหลักทันที
-    m = folium.Map(location=[lat_input, lon_input], zoom_start=zoom_input, tiles=None)
-    
-    # 🛰️ บังคับใช้ภาพถ่ายดาวเทียมความละเอียดสูง (Google Satellite) เป็นพื้นหลังหลัก
-    folium.TileLayer(
-        tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-        attr='Google Satellite',
-        name='ภาพถ่ายดาวเทียม (Satellite)',
-        overlay=False,
-        control=True
-    ).add_to(m)
-    
-    # เพิ่มตัวเลือกชั้นภาพดาวเทียมพร้อมชื่อสถานที่/ถนน (Hybrid)
-    folium.TileLayer(
-        tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-        attr='Google Satellite Hybrid',
-        name='ดาวเทียม + ชื่อสถานที่ (Hybrid)',
-        overlay=False,
-        control=True
-    ).add_to(m)
-    
-    folium.LayerControl().add_to(m)
+# ภาพดาวเทียมรายละเอียดสูง
+folium.TileLayer(
+    tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    attr='Google Satellite',
+    name='Satellite',
+    overlay=False,
+    control=True
+).add_to(m)
 
-    # หมุดแสดงตำแหน่งพิกัดที่ค้นหา
-    folium.Marker(
-        [lat_input, lon_input],
-        popup="ตำแหน่งพิกัดค้นหา",
-        icon=folium.Icon(color="red", icon="info-sign")
-    ).add_to(m)
+# เพิ่มภาพถ่ายดาวเทียมแบบมีชื่อสถานที่/ถนน
+folium.TileLayer(
+    tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    attr='Google Hybrid',
+    name='Satellite Hybrid',
+    overlay=False,
+    control=True
+).add_to(m)
 
-    # เครื่องมือวาดรูปทรงบ่อกุ้ง
-    from folium.plugins import Draw
-    Draw(
-        export=True,
-        filename='my_shrimp_ponds.geojson',
-        position='topleft',
-        draw_options={'polyline': False, 'circle': False, 'marker': False, 'circlemarker': False}
-    ).add_to(m)
-    
-    map_data = st_folium(m, width=720, height=500, key="shrimp_map")
+# หมุดพิกัดค้นหา
+folium.Marker(
+    [lat_input, lon_input],
+    popup=f"พิกัดค้นหา: {lat_input}, {lon_input}",
+    icon=folium.Icon(color="red", icon="info-sign")
+).add_to(m)
 
-with col_info:
-    st.subheader("📌 คำแนะนำการใช้งาน")
-    st.info("""
-    1. **ส่องดูบ่อกุ้ง:** แผนที่ด้านซ้ายเปลี่ยนเป็น **"ภาพถ่ายดาวเทียมความละเอียดสูง"** แล้ว จะเห็นคันบ่อและผิวน้ำชัดเจน
-    2. **วาดรูปทรงบ่อ:** ใช้เครื่องมือวาดรูปสี่เหลี่ยม หรือโพลีกอน (มุมซ้ายบนของแผนที่) **คลิกวาดล้อมรอบบ่อกุ้งได้หลายๆ บ่อ**
-    3. **ประมวลผล:** กดปุ่ม **'🚀 วิเคราะห์คุณภาพน้ำทุกบ่อ'** ด้านล่าง
-    """)
-    
-    btn_analyze = st.button("🚀 วิเคราะห์คุณภาพน้ำทุกบ่อพร้อมกัน", use_container_width=True)
+# เครื่องมือวาดรูปทรงบ่อกุ้ง (Draw Tools บนมุมขวาเหมือน Copernicus)
+from folium.plugins import Draw
+Draw(
+    export=True,
+    filename='copernicus_ponds.geojson',
+    position='topright',
+    draw_options={'polyline': False, 'circle': False, 'marker': False, 'circlemarker': False}
+).add_to(m)
 
-# --- Function สำหรับคำนวณค่าน้ำ 4 ดัชนี ---
+# แสดงแผนที่เต็มความกว้าง
+map_data = st_folium(m, width="100%", height=580, key="copernicus_map")
+
+# --- 5. Calculation Logic & Results Panel (แสดงผลลัพธ์ด้านล่างแผนที่) ---
 def add_indices(img):
     ndwi = img.normalizedDifference(['B3', 'B8']).rename('NDWI')
     ndci = img.normalizedDifference(['B5', 'B4']).rename('NDCI')
@@ -206,7 +244,6 @@ def add_indices(img):
     cdom = img.select('B3').divide(img.select('B1')).rename('CDOM')
     return img.addBands([ndwi, ndci, ndti, cdom])
 
-# --- ฟังก์ชันสร้าง Action Plan คำแนะนำรายบ่อ ---
 def generate_action_plan(ndci, ndti, cdom, ndwi):
     if ndci < 0.10 and ndti > 0.15:
         risk = "🔴 วิกฤต (แพลงก์ตอนดรอป/น้ำล้ม)"
@@ -247,7 +284,6 @@ def generate_action_plan(ndci, ndti, cdom, ndwi):
         'Treatment': treatment
     }
 
-# --- Processing Zone ---
 if btn_analyze:
     ponds_to_process = []
 
@@ -263,7 +299,7 @@ if btn_analyze:
         st.warning("⚠️ ไม่พบรูปทรงที่วาดบนแผนที่ ระบบจะวัดพื้นที่รัศมี 30 เมตรรอบจุดพิกัดค้นหาแทน")
 
     if ponds_to_process:
-        with st.spinner(f"🔄 กำลังประมวลผลดาวเทียม Sentinel-2 สำหรับทั้งหมด {len(ponds_to_process)} บ่อ..."):
+        with st.spinner(f"🔄 กำลังประมวลผลข้อมูลดาวเทียม Sentinel-2 สำหรับ {len(ponds_to_process)} บ่อ..."):
             summary_results = []
             action_plan_list = []
             time_series_all = []
@@ -334,21 +370,17 @@ if btn_analyze:
                                 'CDOM': round(p['CDOM'], 3)
                             })
 
-            # --- 1. ตารางสรุปค่าน้ำดัชนี ---
-            st.divider()
+            # --- Results Presentation ---
+            st.markdown("---")
             st.subheader("📊 ตารางสรุปดัชนีคุณภาพน้ำจากดาวเทียมล่าสุด (เทียบทุกบ่อ)")
             df_summary = pd.DataFrame(summary_results)
             st.dataframe(df_summary, use_container_width=True)
 
-            # --- 2. ตารางแผนการจัดการบ่อกุ้ง (Daily Action Plan Table) ---
-            st.divider()
-            st.subheader("📋 ตารางแผนการจัดการและคำแนะนำการดูแลบ่อกุ้ง (Action Plan)")
+            st.subheader("📋 ตารางแผนการจัดการและคำแนะนำการดูแลบ่อกุ้ง (Daily Action Plan)")
             df_action = pd.DataFrame(action_plan_list)
             st.dataframe(df_action, use_container_width=True)
 
-            # --- 3. กราฟ Time Series เปรียบเทียบ ---
             if time_series_all:
-                st.divider()
                 st.subheader("📈 เปรียบเทียบแนวโน้มย้อนหลังรายบ่อ")
                 df_ts = pd.DataFrame(time_series_all)
                 df_ts['Date'] = pd.to_datetime(df_ts['Date'])
@@ -356,14 +388,13 @@ if btn_analyze:
 
                 metric_choice = st.selectbox("เลือกดัชนีที่ต้องการดูแนวโน้มเปรียบเทียบ", ["NDCI", "NDTI", "CDOM"])
                 fig = px.line(df_ts, x='Date', y=metric_choice, color='ชื่อบ่อ', markers=True, title=f"แนวโน้มค่า {metric_choice} ย้อนหลังเปรียบเทียบรายบ่อ")
-                fig.update_layout(hovermode="x unified", template="plotly_dark")
+                fig.update_layout(hovermode="x unified", template="plotly_white")
                 st.plotly_chart(fig, use_container_width=True)
 
-                # ปุ่มดาวน์โหลด
                 csv = df_action.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="📥 ดาวน์โหลดตารางแผนการจัดการบ่อกุ้งทุกบ่อ (CSV)",
                     data=csv,
-                    file_name='multi_pond_action_plan.csv',
+                    file_name='copernicus_shrimp_action_plan.csv',
                     mime='text/csv'
                 )
