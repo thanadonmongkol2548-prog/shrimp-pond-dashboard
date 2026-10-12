@@ -7,9 +7,9 @@ import plotly.express as px
 import json
 from datetime import datetime, timedelta
 
-# --- 1. ตั้งค่าหน้าเว็บ & Override CSS ให้เต็มจอและแต่ง Sidebar สไตล์ Copernicus ---
+# --- 1. ตั้งค่าหน้าเว็บ & Override CSS แต่ง Sidebar ให้เป็น Dark Theme คมชัด ---
 st.set_page_config(
-    page_title="Copernicus Browser - Shrimp Water Quality Analytics",
+    page_title="Shrimp Water Quality Analytics",
     page_icon="🛰️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -24,38 +24,46 @@ st.markdown("""
         background-color: #182b49;
     }
     
-    /* ลบ Padding ของ Container หลักออกเพื่อให้แผนที่เต็มชิดขอบ */
+    /* ลบ Padding ของ Container หลัก */
     .main .block-container {
-        padding: 0rem 0rem 0rem 0rem !important;
+        padding: 0rem !important;
         max-width: 100% !important;
     }
     
-    /* ตกแต่ง Sidebar น้ำเงินเข้ม สไตล์ Copernicus */
+    /* ตกแต่ง Sidebar สไตล์ Copernicus (#182b49) */
     [data-testid="stSidebar"] {
         background-color: #182b49 !important;
         border-right: 1px solid #2a3f6d !important;
-        padding-top: 10px !important;
+        padding-top: 15px !important;
     }
     
     [data-testid="stSidebar"] * {
         color: #ffffff !important;
     }
     
-    /* ตกแต่ง Input / Selectbox ให้เข้ากับธีมเข้ม ไม่ให้เป็นกล่องขาว */
-    div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {
+    /* แต่งกล่อง Input, Selectbox, DatePicker ให้เป็น Dark Theme สวยงาม ไม่เป็นกล่องขาว */
+    div[data-baseweb="select"] > div, 
+    div[data-baseweb="input"] > div, 
+    div[data-baseweb="calendar"] {
         background-color: #0f172a !important;
-        border-color: #334155 !important;
+        border: 1px solid #334155 !important;
         color: #ffffff !important;
-        border-radius: 4px !important;
-    }
-    
-    input {
-        color: #ffffff !important;
+        border-radius: 6px !important;
     }
 
-    /* Copernicus Brand Banner */
+    div[data-baseweb="select"] * {
+        color: #ffffff !important;
+        background-color: #0f172a !important;
+    }
+
+    input {
+        color: #ffffff !important;
+        background-color: #0f172a !important;
+    }
+    
+    /* Copernicus Brand Header */
     .copernicus-brand {
-        padding: 10px 5px 15px 5px;
+        padding: 5px 0px 15px 0px;
         border-bottom: 1px solid #2a3f6d;
         margin-bottom: 15px;
     }
@@ -72,36 +80,24 @@ st.markdown("""
         letter-spacing: 1px;
     }
     
-    /* Tab VISUALISE / SEARCH */
-    .copernicus-tabs {
-        display: flex;
-        background-color: #0f172a;
-        border-radius: 4px;
-        padding: 3px;
-        margin-bottom: 15px;
-    }
-    .copernicus-tab-item {
-        flex: 1;
-        text-align: center;
-        padding: 8px;
-        font-size: 12px;
-        font-weight: bold;
-        border-radius: 3px;
-    }
-    .copernicus-tab-active {
-        background-color: #3b82f6;
-        color: white !important;
-    }
-    
     /* หัวข้อกลุ่ม Sidebar */
     .sidebar-section-title {
         font-size: 11px;
-        font-weight: bold;
+        font-weight: 700;
         color: #94a3b8 !important;
         text-transform: uppercase;
         letter-spacing: 0.8px;
-        margin-top: 15px;
+        margin-top: 14px;
         margin-bottom: 6px;
+    }
+    
+    /* Radio Button สำหรับเลือก Visual Layers */
+    div[data-testid="stRadio"] > label {
+        display: none !important;
+    }
+    div[data-testid="stRadio"] label span {
+        font-size: 13px !important;
+        color: #e2e8f0 !important;
     }
     
     /* ปุ่มวิเคราะห์สีเขียว Copernicus */
@@ -110,10 +106,11 @@ st.markdown("""
         color: #182b49 !important;
         font-weight: 800 !important;
         font-size: 15px !important;
-        border-radius: 4px !important;
+        border-radius: 6px !important;
         border: none !important;
         padding: 12px 16px !important;
         box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
+        margin-top: 10px;
     }
     .stButton>button:hover {
         background-color: #c8e642 !important;
@@ -139,16 +136,12 @@ def init_gee():
 
 init_gee()
 
-# --- 3. Sidebar (Copernicus Styled Sidebar) ---
+# --- 3. Sidebar (ปรับแต่งใหม่ ปรับช่องให้สวย และเอา Search ออก) ---
 with st.sidebar:
     st.markdown("""
         <div class="copernicus-brand">
             <div class="copernicus-logo-text">copernicus <span style="color:#b5d334; font-size:14px;">BROWSER</span></div>
             <div class="copernicus-logo-sub">Shrimp Pond Water Quality System</div>
-        </div>
-        <div class="copernicus-tabs">
-            <div class="copernicus-tab-item copernicus-tab-active">VISUALISE</div>
-            <div class="copernicus-tab-item" style="color:#64748b;">SEARCH</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -185,10 +178,10 @@ with st.sidebar:
     lon_input = col_lon.number_input("Lon", value=default_lon, format="%.6f")
     zoom_input = st.slider("Zoom Level", 12, 18, 16)
 
-    st.markdown("---")
+    st.markdown("<br>", unsafe_allow_html=True)
     btn_analyze = st.button("🚀 ANALYZE ALL PONDS", use_container_width=True)
 
-# --- 4. Main Map (ตั้งค่าความสูง 800px เต็มหน้าจอ) ---
+# --- 4. Main Map Area (แสดงแผนที่เต็มจอความสูง 820px) ---
 m = folium.Map(location=[lat_input, lon_input], zoom_start=zoom_input, tiles=None, control_scale=True)
 
 folium.TileLayer(
@@ -221,8 +214,7 @@ Draw(
     draw_options={'polyline': False, 'circle': False, 'marker': False, 'circlemarker': False}
 ).add_to(m)
 
-# ขยายความสูงเป็น 800px ให้สูงเต็มหน้าจอ
-map_data = st_folium(m, width="100%", height=800, key="copernicus_map")
+map_data = st_folium(m, width="100%", height=820, key="copernicus_map")
 
 # --- 5. Action Plan & Results ---
 def add_indices(img):
@@ -289,7 +281,6 @@ if btn_analyze:
         with st.spinner(f"🔄 กำลังประมวลผลดาวเทียม Sentinel-2 สำหรับ {len(ponds_to_process)} บ่อ..."):
             summary_results = []
             action_plan_list = []
-            time_series_all = []
 
             for pond in ponds_to_process:
                 pond_name = pond['name']
