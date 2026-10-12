@@ -7,9 +7,9 @@ import plotly.express as px
 import json
 from datetime import datetime, timedelta
 
-# --- 1. ตั้งค่าหน้าเว็บ & Override CSS แต่ง Sidebar ให้เป็น Dark Theme คมชัด ---
+# --- 1. ตั้งค่าหน้าเว็บ & Override CSS แต่ง Sidebar Dark Theme คมชัด ---
 st.set_page_config(
-    page_title="Shrimp Water Quality Analytics",
+    page_title="Copernicus Browser - Shrimp Water Quality Analytics",
     page_icon="🛰️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -41,9 +41,9 @@ st.markdown("""
         color: #ffffff !important;
     }
     
-    /* แต่งกล่อง Input, Selectbox, DatePicker ให้เป็น Dark Theme สวยงาม ไม่เป็นกล่องขาว */
+    /* แต่งกล่อง Input, Selectbox, DatePicker ให้สวยงาม ไม่ให้มีแถบขาว */
     div[data-baseweb="select"] > div, 
-    div[data-baseweb="input"] > div, 
+    div[data-baseweb="input"] > div,
     div[data-baseweb="calendar"] {
         background-color: #0f172a !important;
         border: 1px solid #334155 !important;
@@ -51,7 +51,7 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
-    div[data-baseweb="select"] * {
+    div[data-baseweb="select"] *, div[data-baseweb="input"] * {
         color: #ffffff !important;
         background-color: #0f172a !important;
     }
@@ -91,15 +91,6 @@ st.markdown("""
         margin-bottom: 6px;
     }
     
-    /* Radio Button สำหรับเลือก Visual Layers */
-    div[data-testid="stRadio"] > label {
-        display: none !important;
-    }
-    div[data-testid="stRadio"] label span {
-        font-size: 13px !important;
-        color: #e2e8f0 !important;
-    }
-    
     /* ปุ่มวิเคราะห์สีเขียว Copernicus */
     .stButton>button {
         background-color: #b5d334 !important;
@@ -110,10 +101,17 @@ st.markdown("""
         border: none !important;
         padding: 12px 16px !important;
         box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
-        margin-top: 10px;
+        margin-top: 15px;
     }
     .stButton>button:hover {
         background-color: #c8e642 !important;
+    }
+    
+    /* ปรับแต่งส่วนแสดงผลลัพธ์ด้านล่าง */
+    .result-container {
+        padding: 25px;
+        background-color: #0f172a;
+        color: #ffffff;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -136,7 +134,7 @@ def init_gee():
 
 init_gee()
 
-# --- 3. Sidebar (ปรับแต่งใหม่ ปรับช่องให้สวย และเอา Search ออก) ---
+# --- 3. Sidebar Navigation ---
 with st.sidebar:
     st.markdown("""
         <div class="copernicus-brand">
@@ -145,23 +143,17 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="sidebar-section-title">DATE: SINGLE</div>', unsafe_allow_html=True)
-    end_date = st.date_input("เลือกวันที่วิเคราะห์", datetime.now(), label_visibility="collapsed")
-    start_date = end_date - timedelta(days=60)
+    # ช่วงเวลาวิเคราะห์ (แบบเดิม 2 ช่อง)
+    st.markdown('<div class="sidebar-section-title">📅 ช่วงเวลาวิเคราะห์ข้อมูล</div>', unsafe_allow_html=True)
+    end_date = st.date_input("วันที่สิ้นสุด", datetime.now())
+    start_date = st.date_input("วันที่เริ่มต้น (สำหรับวิเคราะห์แนวโน้ม)", end_date - timedelta(days=60))
 
-    st.markdown('<div class="sidebar-section-title">DATA COLLECTIONS</div>', unsafe_allow_html=True)
+    # ชุดข้อมูลดาวเทียม
+    st.markdown('<div class="sidebar-section-title">🛰️ DATA COLLECTIONS</div>', unsafe_allow_html=True)
     dataset = st.selectbox("เลือกชุดข้อมูลดาวเทียม", ["Sentinel-2 L2A", "Sentinel-2 L1C"], label_visibility="collapsed")
 
-    st.markdown('<div class="sidebar-section-title">VISUALIZATION LAYERS</div>', unsafe_allow_html=True)
-    layer_mode = st.radio("เลือกดัชนีแสดงผลชั้นสี", [
-        "True Color (ภาพสีธรรมชาติ)",
-        "NDCI (คลอโรฟิลล์-เอ / แพลงก์ตอน)",
-        "NDTI (ความขุ่น / ตะกอน)",
-        "CDOM (สารอินทรีย์สะสม)",
-        "NDWI (ดัชนีผิวน้ำ)"
-    ], label_visibility="collapsed")
-
-    st.markdown('<div class="sidebar-section-title">PRESET PONDS & COORDINATES</div>', unsafe_allow_html=True)
+    # เลือกบ่อและพิกัด
+    st.markdown('<div class="sidebar-section-title">🏢 PRESET PONDS & COORDINATES</div>', unsafe_allow_html=True)
     PRESET_PONDS = {
         "กำหนดเอง (พิมพ์พิกัด)": [13.5821, 100.9543],
         "บ่อที่ 1 (อ.บางปะกง)": [13.5821, 100.9543],
@@ -179,9 +171,9 @@ with st.sidebar:
     zoom_input = st.slider("Zoom Level", 12, 18, 16)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    btn_analyze = st.button("🚀 ANALYZE ALL PONDS", use_container_width=True)
+    btn_analyze = st.button("🚀 ANALYZE ALL PONDS (วิเคราะห์ทุกบ่อ)", use_container_width=True)
 
-# --- 4. Main Map Area (แสดงแผนที่เต็มจอความสูง 820px) ---
+# --- 4. Main Map Area (แสดงแผนที่ภาพดาวเทียมคมชัดความสูง 820px) ---
 m = folium.Map(location=[lat_input, lon_input], zoom_start=zoom_input, tiles=None, control_scale=True)
 
 folium.TileLayer(
@@ -216,7 +208,7 @@ Draw(
 
 map_data = st_folium(m, width="100%", height=820, key="copernicus_map")
 
-# --- 5. Action Plan & Results ---
+# --- 5. Calculation Logic & Output Panel ---
 def add_indices(img):
     ndwi = img.normalizedDifference(['B3', 'B8']).rename('NDWI')
     ndci = img.normalizedDifference(['B5', 'B4']).rename('NDCI')
@@ -281,6 +273,7 @@ if btn_analyze:
         with st.spinner(f"🔄 กำลังประมวลผลดาวเทียม Sentinel-2 สำหรับ {len(ponds_to_process)} บ่อ..."):
             summary_results = []
             action_plan_list = []
+            time_series_all = []
 
             for pond in ponds_to_process:
                 pond_name = pond['name']
@@ -329,10 +322,50 @@ if btn_analyze:
                         'รายละเอียดวิเคราะห์': plan['Detail']
                     })
 
-            st.container()
-            st.markdown("---")
-            st.subheader("📊 ตารางสรุปดัชนีคุณภาพน้ำจากดาวเทียมล่าสุด")
-            st.dataframe(pd.DataFrame(summary_results), use_container_width=True)
+                    # Time Series Extract
+                    s2_indexed = s2.map(add_indices)
+                    def extract_stats(img):
+                        d = ee.Date(img.get('system:time_start')).format('YYYY-MM-dd')
+                        m_dict = img.reduceRegion(reducer=ee.Reducer.mean(), geometry=ee_pond, scale=10)
+                        return ee.Feature(None, {'date': d, 'NDCI': m_dict.get('NDCI'), 'NDTI': m_dict.get('NDTI'), 'CDOM': m_dict.get('CDOM')})
 
-            st.subheader("📋 ตารางแผนการจัดการบ่อกุ้ง (Daily Action Plan)")
-            st.dataframe(pd.DataFrame(action_plan_list), use_container_width=True)
+                    ts_features = s2_indexed.map(extract_stats).getInfo()['features']
+                    for f in ts_features:
+                        p = f['properties']
+                        if p['NDCI'] is not None:
+                            time_series_all.append({
+                                'ชื่อบ่อ': pond_name,
+                                'Date': p['date'],
+                                'NDCI': round(p['NDCI'], 3),
+                                'NDTI': round(p['NDTI'], 3),
+                                'CDOM': round(p['CDOM'], 3)
+                            })
+
+            # --- แสดงผลตารางและกราฟด้านล่าง ---
+            st.markdown("---")
+            st.subheader("📊 ตารางสรุปดัชนีคุณภาพน้ำจากดาวเทียมล่าสุด (เทียบทุกบ่อ)")
+            df_summary = pd.DataFrame(summary_results)
+            st.dataframe(df_summary, use_container_width=True)
+
+            st.subheader("📋 ตารางแผนการจัดการและคำแนะนำการดูแลบ่อกุ้ง (Daily Action Plan)")
+            df_action = pd.DataFrame(action_plan_list)
+            st.dataframe(df_action, use_container_width=True)
+
+            if time_series_all:
+                st.subheader("📈 เปรียบเทียบแนวโน้มย้อนหลังรายบ่อ")
+                df_ts = pd.DataFrame(time_series_all)
+                df_ts['Date'] = pd.to_datetime(df_ts['Date'])
+                df_ts = df_ts.sort_values('Date')
+
+                metric_choice = st.selectbox("เลือกดัชนีที่ต้องการดูแนวโน้มเปรียบเทียบ", ["NDCI", "NDTI", "CDOM"])
+                fig = px.line(df_ts, x='Date', y=metric_choice, color='ชื่อบ่อ', markers=True, title=f"แนวโน้มค่า {metric_choice} ย้อนหลังเปรียบเทียบรายบ่อ")
+                fig.update_layout(hovermode="x unified", template="plotly_dark")
+                st.plotly_chart(fig, use_container_width=True)
+
+                csv = df_action.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 ดาวน์โหลดตารางแผนการจัดการบ่อกุ้งทุกบ่อ (CSV)",
+                    data=csv,
+                    file_name='shrimp_farm_action_plan.csv',
+                    mime='text/csv'
+                )
