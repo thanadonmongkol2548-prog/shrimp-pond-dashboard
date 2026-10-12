@@ -41,10 +41,9 @@ st.markdown("""
         color: #ffffff !important;
     }
     
-    /* แต่งกล่อง Input, Selectbox, DatePicker ให้สวยงาม ไม่ให้มีแถบขาว */
+    /* แต่งกล่อง Input, Selectbox, DatePicker ให้สวยงามเป็น Dark Theme ทั้งหมด */
     div[data-baseweb="select"] > div, 
-    div[data-baseweb="input"] > div,
-    div[data-baseweb="calendar"] {
+    div[data-baseweb="input"] > div {
         background-color: #0f172a !important;
         border: 1px solid #334155 !important;
         color: #ffffff !important;
@@ -59,6 +58,21 @@ st.markdown("""
     input {
         color: #ffffff !important;
         background-color: #0f172a !important;
+    }
+
+    /* ปรับแต่ง Pop-up ปฏิทิน DatePicker ให้เป็น Dark Theme ตัวหนังสือชัดเจน เลื่อนปีง่าย */
+    div[data-baseweb="popover"] > div,
+    div[data-baseweb="calendar"] {
+        background-color: #0f172a !important;
+        border: 1px solid #334155 !important;
+        color: #ffffff !important;
+    }
+    div[data-baseweb="calendar"] * {
+        color: #ffffff !important;
+        background-color: #0f172a !important;
+    }
+    div[data-baseweb="calendar"] button:hover {
+        background-color: #1e293b !important;
     }
     
     /* Copernicus Brand Header */
@@ -106,13 +120,6 @@ st.markdown("""
     .stButton>button:hover {
         background-color: #c8e642 !important;
     }
-    
-    /* ปรับแต่งส่วนแสดงผลลัพธ์ด้านล่าง */
-    .result-container {
-        padding: 25px;
-        background-color: #0f172a;
-        color: #ffffff;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -143,10 +150,23 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-    # ช่วงเวลาวิเคราะห์ (แบบเดิม 2 ช่อง)
+    # ช่วงเวลาวิเคราะห์ (กำหนด min_value / max_value เพื่อเปิดให้เลือกปีย้อนหลังได้ 10 ปี)
     st.markdown('<div class="sidebar-section-title">📅 ช่วงเวลาวิเคราะห์ข้อมูล</div>', unsafe_allow_html=True)
-    end_date = st.date_input("วันที่สิ้นสุด", datetime.now())
-    start_date = st.date_input("วันที่เริ่มต้น (สำหรับวิเคราะห์แนวโน้ม)", end_date - timedelta(days=60))
+    today = datetime.now()
+    min_date = datetime(2017, 1, 1) # Sentinel-2 L2A มีข้อมูลตั้งแต่ช่วงปี 2017
+    
+    end_date = st.date_input(
+        "วันที่สิ้นสุด", 
+        value=today, 
+        min_value=min_date, 
+        max_value=today
+    )
+    start_date = st.date_input(
+        "วันที่เริ่มต้น (สำหรับวิเคราะห์แนวโน้ม)", 
+        value=end_date - timedelta(days=60), 
+        min_value=min_date, 
+        max_value=today
+    )
 
     # ชุดข้อมูลดาวเทียม
     st.markdown('<div class="sidebar-section-title">🛰️ DATA COLLECTIONS</div>', unsafe_allow_html=True)
