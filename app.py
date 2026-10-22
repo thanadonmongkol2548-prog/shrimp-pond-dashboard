@@ -7,32 +7,7 @@ import plotly.express as px
 import json
 from datetime import datetime, timedelta
 
-# 1. ยืนยันตัวตน GEE บน Streamlit Cloud
-@st.cache_resource
-def init_gee():
-    try:
-        service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
-        
-        # ดึง project_id จาก Secrets
-        project_id = service_account_info.get("project_id", "shrimp-water-quality")
-        
-        # แปลง dict ให้เป็น JSON String
-        key_json_str = json.dumps(service_account_info)
-        
-        credentials = ee.ServiceAccountCredentials(
-            service_account_info["client_email"],
-            key_data=key_json_str
-        )
-        
-        # ระบุ project สองจุดเพื่อให้ครอบคลุมการประมวลผล Cloud
-        ee.Initialize(credentials, project=project_id, opt_url='https://earthengine.googleapis.com')
-        
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ GEE: {e}")
-
-init_gee()
-
-# --- 1. ตั้งค่าหน้าเว็บ & Custom CSS สไตล์โมเดิร์น ---
+# --- 1. ตั้งค่าหน้าเว็บ & Custom CSS ---
 st.set_page_config(
     page_title="ShrimpSmart - ระบบวิเคราะห์และวางแผนจัดการบ่อกุ้งหลายบ่อ",
     page_icon="🦐",
@@ -61,17 +36,19 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. ยืนยันตัวตน GEE ---
+# --- 2. ยืนยันตัวตน GEE บน Streamlit Cloud ---
 @st.cache_resource
 def init_gee():
     try:
         service_account_info = dict(st.secrets["GCP_SERVICE_ACCOUNT"])
+        project_id = service_account_info.get("project_id", "shrimp-water-quality")
         key_json_str = json.dumps(service_account_info)
+        
         credentials = ee.ServiceAccountCredentials(
             service_account_info["client_email"],
             key_data=key_json_str
         )
-        ee.Initialize(credentials)
+        ee.Initialize(credentials, project=project_id, opt_url='https://earthengine.googleapis.com')
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ GEE: {e}")
 
@@ -86,7 +63,6 @@ st.divider()
 # --- Sidebar Controls ---
 st.sidebar.header("⚙️ เลือกตั้งค่าการค้นหาและเวลา")
 
-# Preset บ่อกุ้ง
 PRESET_PONDS = {
     "กำหนดเอง (พิมพ์พิกัด)": [13.5821, 100.9543],
     "บ่อที่ 1 (อ.บางปะกง)": [13.5821, 100.9543],
@@ -117,7 +93,6 @@ with col_map:
     m = folium.Map(location=[lat_input, lon_input], zoom_start=zoom_input)
     folium.TileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Satellite').add_to(m)
     
-    # หมุดชี้ตำแหน่งพิกัดค้นหา
     folium.Marker([lat_input, lon_input], popup="ตำแหน่งพิกัดค้นหา", icon=folium.Icon(color="red", icon="info-sign")).add_to(m)
 
     from folium.plugins import Draw
@@ -195,7 +170,6 @@ if btn_analyze:
             geom = ee.Geometry.Polygon(coords)
             ponds_to_process.append({'name': f'บ่อที่วาด {idx + 1}', 'geometry': geom})
     else:
-        # หากไม่ได้วาด ให้สร้างบัฟเฟอร์รัศมี 30 เมตรรอบพิกัดที่พิมพ์ค้นหา
         geom = ee.Geometry.Point([lon_input, lat_input]).buffer(30)
         ponds_to_process.append({'name': 'บ่อตามพิกัดค้นหา', 'geometry': geom})
         st.warning("⚠️ ไม่พบรูปทรงที่วาดบนแผนที่ ระบบจะวัดพื้นที่รัศมี 30 เมตรรอบจุดพิกัดค้นหาแทน")
@@ -227,10 +201,10 @@ if btn_analyze:
                         scale=10
                     ).getInfo()
 
-                    ndci_val = round(stats.get('NDCI', 0), 3) if stats.get('NDCI') else 0
-                    ndti_val = round(stats.get('NDTI', 0), 3) if stats.get('NDTI') else 0
-                    cdom_val = round(stats.get('CDOM', 0), 3) if stats.get('CDOM') else 0
-                    ndwi_val = round(stats.get('NDWI', 0), 3) if stats.get('NDWI') else 0
+                    ndci_val = round(stats.get('NDCI', 0), 3) if stats.get('NDCI') is not None else 0
+                    ndti_val = round(stats.get('NDTI', 0), 3) if stats.get('NDTI') is not None else 0
+                    cdom_val = round(stats.get('CDOM', 0), 3) if stats.get('CDOM') is not None else 0
+                    ndwi_val = round(stats.get('NDWI', 0), 3) if stats.get('NDWI') is not None else 0
 
                     plan = generate_action_plan(ndci_val, ndti_val, cdom_val, ndwi_val)
 
@@ -258,23 +232,24 @@ if btn_analyze:
                     def extract_stats(img):
                         d = ee.Date(img.get('system:time_start')).format('YYYY-MM-dd')
                         m_dict = img.reduceRegion(reducer=ee.Reducer.mean(), geometry=ee_pond, scale=10)
-                        return ee.Feature(None, {'date': d, 'NDCI': m_dict.get('NDCI'), 'NDTI': m_dict.get('NDTI'), 'CDOM': m_dict.get('CDOM')})
+                        return ee.Feature(None, {'date': d, 'NDCI': m_dict.get('NDCI'), 'NDTI': m_dict.get('NDTI'), 'CDOM': m_dict.get('CDOM'), 'NDWI': m_dict.get('NDWI')})
 
                     ts_features = s2_indexed.map(extract_stats).getInfo()['features']
                     for f in ts_features:
                         p = f['properties']
-                        if p['NDCI'] is not None:
+                        if p.get('NDCI') is not None:
                             time_series_all.append({
                                 'ชื่อบ่อ': pond_name,
                                 'Date': p['date'],
-                                'NDCI': round(p['NDCI'], 3),
-                                'NDTI': round(p['NDTI'], 3),
-                                'CDOM': round(p['CDOM'], 3)
+                                'NDCI': round(p['NDCI'], 3) if p['NDCI'] is not None else 0,
+                                'NDTI': round(p['NDTI'], 3) if p['NDTI'] is not None else 0,
+                                'CDOM': round(p['CDOM'], 3) if p['CDOM'] is not None else 0,
+                                'NDWI': round(p['NDWI'], 3) if p['NDWI'] is not None else 0
                             })
 
-            # --- 1. ตารางสรุปค่าน้ำดัชนี ---
+            # --- 1. ตารางสรุปค่าน้ำดัชนี (NDCI, NDTI, CDOM, NDWI) ---
             st.divider()
-            st.subheader("📊 ตารางสรุปดัชนีคุณภาพน้ำจากดาวเทียมล่าสุด (เทียบทุกบ่อ)")
+            st.subheader("📊 ตารางสรุปดัชนีคุณภาพน้ำจากดาวเทียมล่าสุด (NDCI / NDTI / CDOM / NDWI)")
             df_summary = pd.DataFrame(summary_results)
             st.dataframe(df_summary, use_container_width=True)
 
@@ -292,16 +267,29 @@ if btn_analyze:
                 df_ts['Date'] = pd.to_datetime(df_ts['Date'])
                 df_ts = df_ts.sort_values('Date')
 
-                metric_choice = st.selectbox("เลือกดัชนีที่ต้องการดูแนวโน้มเปรียบเทียบ", ["NDCI", "NDTI", "CDOM"])
+                metric_choice = st.selectbox("เลือกดัชนีที่ต้องการดูแนวโน้มเปรียบเทียบ", ["NDCI", "NDTI", "CDOM", "NDWI"])
                 fig = px.line(df_ts, x='Date', y=metric_choice, color='ชื่อบ่อ', markers=True, title=f"แนวโน้มค่า {metric_choice} ย้อนหลังเปรียบเทียบรายบ่อ")
                 fig.update_layout(hovermode="x unified", template="plotly_white")
                 st.plotly_chart(fig, use_container_width=True)
 
-                # ปุ่มดาวน์โหลด
-                csv = df_action.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 ดาวน์โหลดตารางแผนการจัดการบ่อกุ้งทุกบ่อ (CSV)",
-                    data=csv,
-                    file_name='multi_pond_action_plan.csv',
-                    mime='text/csv'
-                )
+                # ปุ่มดาวน์โหลด CSV (ใช้ utf-8-sig เพื่อป้องกันภาษาไทยต่างดาวใน Excel)
+                csv_summary = df_summary.to_csv(index=False).encode('utf-8-sig')
+                csv_action = df_action.to_csv(index=False).encode('utf-8-sig')
+
+                col_dl1, col_dl2 = st.columns(2)
+                with col_dl1:
+                    st.download_button(
+                        label="📥 ดาวน์โหลดตารางดัชนีค่าน้ำ (CSV)",
+                        data=csv_summary,
+                        file_name='water_indices_summary.csv',
+                        mime='text/csv',
+                        use_container_width=True
+                    )
+                with col_dl2:
+                    st.download_button(
+                        label="📥 ดาวน์โหลดตารางแผนการจัดการบ่อกุ้ง (CSV)",
+                        data=csv_action,
+                        file_name='multi_pond_action_plan.csv',
+                        mime='text/csv',
+                        use_container_width=True
+                    )
