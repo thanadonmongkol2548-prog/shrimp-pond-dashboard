@@ -92,35 +92,47 @@ with col_map:
     st.subheader("🗺️ แผนที่ฟาร์มกุ้ง (ใช้วาดหลายบ่อ)")
     m = folium.Map(location=[lat_input, lon_input], zoom_start=zoom_input)
     folium.TileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Satellite').add_to(m)
-    
     folium.Marker([lat_input, lon_input], popup="ตำแหน่งพิกัดค้นหา", icon=folium.Icon(color="red", icon="info-sign")).add_to(m)
 
     from folium.plugins import Draw
     Draw(export=True, filename='my_ponds.geojson').add_to(m)
-    
     map_data = st_folium(m, width=700, height=480, key="shrimp_map")
 
 with col_info:
     st.subheader("📌 ขั้นตอนการใช้งาน")
     st.info("""
     1. **ค้นหาตำแหน่ง:** ป้อนพิกัด ละติจูด/ลองจิจูด ทางแถบซ้ายมือ แผนที่จะย้ายไปตำแหน่งนั้น
-    2. **วาดหลายๆ บ่อ:** ใช้เครื่องมือวาดสี่เหลี่ยม/โพลีกอนบนแผนที่ด้านซ้าย **วาดล้อมรอบบ่อกุ้งหลายๆ บ่อได้เลย** (บ่อ 1, บ่อ 2, บ่อ 3 ฯลฯ)
+    2. **วาดหลายๆ บ่อ:** ใช้เครื่องมือวาดสี่เหลี่ยม/โพลีกอนบนแผนที่ด้านซ้าย **วาดล้อมรอบบ่อกุ้งหลายๆ บ่อได้เลย**
     3. **เริ่มวิเคราะห์:** กดปุ่มด้านล่างเพื่อประมวลผลค่าน้ำทุกบ่อพร้อมกัน
     """)
-    
     btn_analyze = st.button("🚀 ประมวลผลและสร้างแผนจัดการบ่อกุ้งทุกบ่อ", use_container_width=True)
+
+# --- ฟังก์ชันกรองเมฆแบบละเอียด (QA60 Cloud Masking) ---
+def mask_s2_clouds(image):
+    qa = image.select('QA60')
+    cloud_bit_mask = 1 << 10
+    cirrus_bit_mask = 1 << 11
+    mask = qa.bitwiseAnd(cloud_bit_mask).eq(0).And(qa.bitwiseAnd(cirrus_bit_mask).eq(0))
+    return image.updateMask(mask)
 
 # --- Function สำหรับคำนวณค่าน้ำ 4 ดัชนี ---
 def add_indices(img):
     ndwi = img.normalizedDifference(['B3', 'B8']).rename('NDWI')
     ndci = img.normalizedDifference(['B5', 'B4']).rename('NDCI')
     ndti = img.normalizedDifference(['B4', 'B3']).rename('NDTI')
-    cdom = img.select('B3').divide(img.select('B1')).rename('CDOM')
+    # ป้องกันการหารด้วยศูนย์ของ CDOM
+    cdom = img.select('B3').divide(img.select('B1').add(0.0001)).rename('CDOM')
     return img.addBands([ndwi, ndci, ndti, cdom])
 
 # --- ฟังก์ชันสร้าง Action Plan คำแนะนำรายบ่อ ---
 def generate_action_plan(ndci, ndti, cdom, ndwi):
-    if ndci < 0.10 and ndti > 0.15:
+    if ndwi < -0.2:
+        risk = "⚠️ เตือน (พื้นที่ที่วาดอาจไม่ใช่ผิวน้ำ/โดนคันบ่อ)"
+        detail = "ค่าดัชนีน้ำต่ำเกินไป วาดครอบคลุมขอบบ่อหรือคันดินมากเกินไป"
+        aeration = "ตรวจสอบขอบเขตบ่อที่วาดใหม่"
+        feed = "ให้อาหารตามปกติ"
+        treatment = "วาดรูปทรงบ่อให้ครอบคลุมเฉพาะผิวน้ำด้านใน"
+    elif ndci < 0.10 and ndti > 0.15:
         risk = "🔴 วิกฤต (แพลงก์ตอนดรอป/น้ำล้ม)"
         detail = "ความหนาแน่นแพลงก์ตอนต่ำ ตะกอนสูง น้ำเสี่ยงขาดออกซิเจน"
         aeration = "เปิดใบพัดตีน้ำเต็มกำลัง 24 ชม."
@@ -184,18 +196,19 @@ if btn_analyze:
                 pond_name = pond['name']
                 ee_pond = pond['geometry']
 
+                # กรองเมฆและประมวลผลดัชนี
                 s2 = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                       .filterBounds(ee_pond)
                       .filterDate(start_date.strftime('%Y-%m-%d'), (end_date + timedelta(days=1)).strftime('%Y-%m-%d'))
-                      .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
+                      .map(mask_s2_clouds)
+                      .map(add_indices)
                       .sort('system:time_start', False))
 
                 if s2.size().getInfo() > 0:
                     latest_img = s2.first()
                     date_str = ee.Date(latest_img.get('system:time_start')).format('YYYY-MM-dd').getInfo()
-                    latest_calc = add_indices(latest_img)
                     
-                    stats = latest_calc.reduceRegion(
+                    stats = latest_img.reduceRegion(
                         reducer=ee.Reducer.mean(),
                         geometry=ee_pond,
                         scale=10
@@ -227,14 +240,19 @@ if btn_analyze:
                         'รายละเอียดวิเคราะห์': plan['Detail']
                     })
 
-                    # Time Series
-                    s2_indexed = s2.map(add_indices)
+                    # ดึงข้อมูล Time Series
                     def extract_stats(img):
                         d = ee.Date(img.get('system:time_start')).format('YYYY-MM-dd')
                         m_dict = img.reduceRegion(reducer=ee.Reducer.mean(), geometry=ee_pond, scale=10)
-                        return ee.Feature(None, {'date': d, 'NDCI': m_dict.get('NDCI'), 'NDTI': m_dict.get('NDTI'), 'CDOM': m_dict.get('CDOM'), 'NDWI': m_dict.get('NDWI')})
+                        return ee.Feature(None, {
+                            'date': d, 
+                            'NDCI': m_dict.get('NDCI'), 
+                            'NDTI': m_dict.get('NDTI'), 
+                            'CDOM': m_dict.get('CDOM'), 
+                            'NDWI': m_dict.get('NDWI')
+                        })
 
-                    ts_features = s2_indexed.map(extract_stats).getInfo()['features']
+                    ts_features = s2.map(extract_stats).getInfo()['features']
                     for f in ts_features:
                         p = f['properties']
                         if p.get('NDCI') is not None:
@@ -247,17 +265,18 @@ if btn_analyze:
                                 'NDWI': round(p['NDWI'], 3) if p['NDWI'] is not None else 0
                             })
 
-            # --- 1. ตารางสรุปค่าน้ำดัชนี (NDCI, NDTI, CDOM, NDWI) ---
-            st.divider()
-            st.subheader("📊 ตารางสรุปดัชนีคุณภาพน้ำจากดาวเทียมล่าสุด (NDCI / NDTI / CDOM / NDWI)")
-            df_summary = pd.DataFrame(summary_results)
-            st.dataframe(df_summary, use_container_width=True)
+            # --- 1. ตารางสรุปค่าน้ำดัชนี ---
+            if summary_results:
+                st.divider()
+                st.subheader("📊 ตารางสรุปดัชนีคุณภาพน้ำจากดาวเทียมล่าสุด (NDCI / NDTI / CDOM / NDWI)")
+                df_summary = pd.DataFrame(summary_results)
+                st.dataframe(df_summary, use_container_width=True)
 
-            # --- 2. ตารางแผนการจัดการบ่อกุ้ง (Daily Action Plan Table) ---
-            st.divider()
-            st.subheader("📋 ตารางแผนการจัดการและคำแนะนำการดูแลบ่อกุ้ง (Action Plan)")
-            df_action = pd.DataFrame(action_plan_list)
-            st.dataframe(df_action, use_container_width=True)
+                # --- 2. ตารางแผนการจัดการบ่อกุ้ง ---
+                st.divider()
+                st.subheader("📋 ตารางแผนการจัดการและคำแนะนำการดูแลบ่อกุ้ง (Action Plan)")
+                df_action = pd.DataFrame(action_plan_list)
+                st.dataframe(df_action, use_container_width=True)
 
             # --- 3. กราฟ Time Series เปรียบเทียบ ---
             if time_series_all:
@@ -268,11 +287,18 @@ if btn_analyze:
                 df_ts = df_ts.sort_values('Date')
 
                 metric_choice = st.selectbox("เลือกดัชนีที่ต้องการดูแนวโน้มเปรียบเทียบ", ["NDCI", "NDTI", "CDOM", "NDWI"])
-                fig = px.line(df_ts, x='Date', y=metric_choice, color='ชื่อบ่อ', markers=True, title=f"แนวโน้มค่า {metric_choice} ย้อนหลังเปรียบเทียบรายบ่อ")
+                fig = px.line(
+                    df_ts, 
+                    x='Date', 
+                    y=metric_choice, 
+                    color='ชื่อบ่อ', 
+                    markers=True, 
+                    title=f"แนวโน้มค่า {metric_choice} ย้อนหลังเปรียบเทียบรายบ่อ"
+                )
                 fig.update_layout(hovermode="x unified", template="plotly_white")
                 st.plotly_chart(fig, use_container_width=True)
 
-                # ปุ่มดาวน์โหลด CSV (ใช้ utf-8-sig เพื่อป้องกันภาษาไทยต่างดาวใน Excel)
+                # ปุ่มดาวน์โหลด CSV
                 csv_summary = df_summary.to_csv(index=False).encode('utf-8-sig')
                 csv_action = df_action.to_csv(index=False).encode('utf-8-sig')
 
@@ -293,3 +319,5 @@ if btn_analyze:
                         mime='text/csv',
                         use_container_width=True
                     )
+            else:
+                st.warning("⚠️ ไม่พบข้อมูลภาพถ่ายดาวเทียมSentinel-2 ปราศจากเมฆในช่วงเวลาที่เลือก")
